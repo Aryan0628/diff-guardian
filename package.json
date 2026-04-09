@@ -1,0 +1,26 @@
+{
+  "name": "diff-guardian",
+  "version": "1.0.0",
+  "description": "diff-guardian is an impact-aware git diff CLI. Git only sees text changes—it doesn't know adding a parameter just broke 12 call sites. Powered by a WASM tree-sitter AST, diff-guardian maps the true blast radius, applies 28 strict breaking rules, and flags test gaps to give your PRs a 0-100 risk score.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "chalk": "^5.6.2",
+    "glob": "^13.0.6",
+    "minimist": "^1.2.8",
+    "tree-sitter-typescript": "^0.23.2",
+    "web-tree-sitter": "^0.26.8"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.2",
+    "nodemon": "^3.1.14",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.4"
+  }
+}

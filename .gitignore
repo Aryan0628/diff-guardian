@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Compiled Output
+dist/
+
+# Environment Variables
+.env
+
+# OS Generated Files
+.DS_Store
+Thumbs.db
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+diff-guardian-v2.pdf
+.antigravity
