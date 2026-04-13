@@ -19,22 +19,31 @@ export interface Param {
 }
 
 export interface FunctionSignature {
-  params: Param[];         // Array of all parameters in the exact order they appear
-  returnType: string;      // The return type annotation as a string (e.g., 'Promise<void>')
-  exported: boolean;       // True if part of the public API via 'export' (Required for Rule R8)
-  isDefaultExport: boolean;// True if 'export default' (Catches named vs default import breakages)
-  async: boolean;          // True if marked 'async' (Required for Rule R11: Async/Sync swap)
-  isGenerator?: boolean;   // True if function*/method* (Required for Rule R12: Generator toggle)
-  className?: string;      // The name of the parent class, if any (Prevents class method naming collisions)
-  accessModifier?: 'public' | 'protected' | 'private'; // (Required for Rule R20: Visibility narrowed)
-  isStatic?: boolean;      // True if marked 'static' (Required for Rule R17: Static <-> instance swap)
-  isAbstract?: boolean;    // True if marked 'abstract' (Required for Rule R21: Abstract toggle)
-  isConstructor?: boolean; // True if this is a class 'constructor' (Required for Rule R24)
-  isGetter?: boolean;      // True if this is a 'get' accessor (Catches property -> method conversions)
-  isSetter?: boolean;      // True if this is a 'set' accessor
-  decorators?: string[];   // Raw decorator names like ['Injectable', 'deprecated'] (Required for Rule R16: Decorator removed/changed)
-  typeParameters?: string[];// Tracks generic constraints like '<T extends Record>' (Required for Rule R13)
-  overloadIndex?: number;  // The index (0, 1, 2) of the signature (Prevents overloaded functions from overwriting each other)
+
+  // ── Identity ───────────────────────────────────────────────────────────────
+  name:            string;               // 'processPayment' | 'Service#constructor'
+  line:            number;               // 1-indexed start line — used by reporter
+  filePath?:       string;               // injected by ASTMapper after parsing, optional because the pure parser has no knowledge of the file system
+  // ── Signature shape ────────────────────────────────────────────────────────
+  params:          Param[];              // ordered — order matters for R3
+  returnType:      string | 'inferred'; // 'inferred' = no annotation present, classifier skips R6/R7 when 'inferred', never default to 'any' — that is a real type
+  typeParameters?: string[];             // ['T extends Record<string,unknown>'], R13: generic constraint narrowed
+  // ── Modifiers ──────────────────────────────────────────────────────────────
+  exported:        boolean;              // R8:  exported → unexported
+  isDefaultExport: boolean;              // named vs default export — different import syntax, different breakage
+  async:           boolean;              // R11: sync → async (breaking), R21: async → sync (breaking)
+  isStatic?:       boolean;              // R17: static ↔ instance swap
+  isAbstract?:     boolean;              // abstract toggle — adding abstract forces subclasses to implement
+  isGenerator?:    boolean;              // function* toggle — changes iteration protocol, callers using next() break
+  isConstructor?:  boolean;              // R24: constructor sig change, keyed as 'ClassName#constructor'
+  isGetter?:       boolean;              // get accessor — property read semantics
+  isSetter?:       boolean;              // set accessor — property write semantics
+  // ── Class context ──────────────────────────────────────────────────────────
+  className?:      string;               // parent class name, prevents naming collisions when two classes both have a method called 'find'
+  accessModifier?: 'public' | 'protected' | 'private'; // R20: visibility narrowed, protected → private = breaking, public → protected = breaking       
+  // ── Metadata ───────────────────────────────────────────────────────────────
+  decorators?:     string[];             // ['Injectable', 'deprecated'], R16: decorator removed or changed
+  overloadIndex?:  number;              // 0, 1, 2 ... position in overload sequence, prevents overload signatures from overwriting each other in the Map
 }
 
 export interface InterfaceProperty {
