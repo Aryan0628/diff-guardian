@@ -132,3 +132,14 @@ export interface AnalysisResult {
   testGaps: FunctionChange[]; // Array of broken symbols whose downstream callers lack unit tests
   riskFiles: RiskFile[];      // Array of files flagged for high risk
 }
+
+export interface FileDiff {
+  path:      string;  // relative path in repo e.g. 'src/payments/processor.ts'
+  language:  string;  // raw extension without dot e.g. 'ts' — ast-mapper resolves grammar
+  isNew:     boolean; // file was created in this diff
+  isDeleted: boolean; // file was deleted in this diff
+  isRenamed: boolean; // file was moved/renamed
+  oldPath:   string;  // original path before rename (same as path if not renamed)
+  oldSource: string;  // full text at baseSha  (empty string if isNew)
+  newSource: string;  // full text at headSha  (empty string if isDeleted)
+}
