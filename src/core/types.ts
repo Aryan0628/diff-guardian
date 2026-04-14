@@ -8,138 +8,259 @@
  * mathematically represented in these interfaces. 
  */
 
+export type Language =
+  | 'typescript'
+  | 'javascript'
+  | 'python'
+  | 'go'
+  | 'java'
+  | 'rust';
+
+// ── Severity ──────────────────────────────────────────────────────────────────
+// Three-bucket model.
+// 'breaking' → callers break at runtime or compile time
+// 'warning'  → behaviorally different, callers may not break immediately
+//              e.g. R23 default value changed, R28 unexported→exported
+// 'safe'     → no existing caller affected
+
+export type Severity =
+  | 'breaking'
+  | 'warning'
+  | 'safe';
+
+// ── ChangeType ────────────────────────────────────────────────────────────────
+// Every category of API surface change the classifier can produce.
+// Maps directly to the 28 classification rules.
+
+export type ChangeType =
+  | 'signature_change'           // R1-R5, R12-R14: params added/removed/reordered/retyped
+  | 'return_type_widened'        // R6:  gained null | undefined | never
+  | 'return_type_narrowed'       // R7:  any → string (non-breaking but flagged)
+  | 'visibility_changed'         // R8, R20, R28: exported↔unexported, public↔protected↔private
+  | 'modifier_changed'           // R11, R17, R21, R22: async/static/abstract/generator toggled
+  | 'decorator_changed'          // R16: decorator added, removed, or modified
+  | 'overload_changed'           // R15, R16: overload removed or added
+  | 'interface_property_added'   // R25: new required property added to interface
+  | 'interface_property_removed' // R26: property removed from interface
+  | 'enum_member_changed'        // R27: enum value removed, renamed, or re-assigned
+  | 'type_alias_changed'         // type alias union narrowed or structurally changed
+  | 'function_deleted'           // R9:  symbol removed entirely
+  | 'function_added';            // R10: new symbol added (non-breaking)
+
+
 export interface Param {
-  name: string;          // The name of the parameter (e.g., 'userId')
-  type: string;          // The TypeScript type annotation as a raw string (e.g., 'string | number')
-  optional: boolean;     // True if the parameter has a '?' modifier, indicating it can be omitted
-  hasDefault: boolean;   // True if the parameter has an assignment operator '='
-  defaultValue?: string; // The actual default value string (Required for Rule R23: Default param value changed)
-  isRest?: boolean;      // True if it uses the spread syntax '...args' (Required for Rule R14: Rest param added)
-  readonly: boolean;     // True if marked 'readonly' (Required for Rules R18/R19: Param mutability narrowed)
+  name:          string;    // 'userId', '{...}', '[...]', '...args'
+  type:          string;    // raw text: 'string', 'User | null', 'readonly string[]'
+  optional:      boolean;   // true if param has ? modifier OR has default value
+  hasDefault:    boolean;   // true if param has = someValue specifically
+                            // optional=true + hasDefault=false → x?: T
+                            // optional=true + hasDefault=true  → x = val
+                            // classifier uses hasDefault to distinguish R1 vs R5
+  defaultValue?: string;    // the actual default value text — R23: default value changed
+  isRest?:       boolean;   // true if ...rest param — R14 depends on this
 }
 
+// ── FunctionSignature ─────────────────────────────────────────────────────────
+// Represents the complete, extractable shape of one function at one point in time.
+// Produced by the parser. Consumed by the classifier.
 export interface FunctionSignature {
 
-  // ── Identity ───────────────────────────────────────────────────────────────
-  name:            string;               // 'processPayment' | 'Service#constructor'
-  line:            number;               // 1-indexed start line — used by reporter
-  filePath?:       string;               // injected by ASTMapper after parsing, optional because the pure parser has no knowledge of the file system
-  // ── Signature shape ────────────────────────────────────────────────────────
-  params:          Param[];              // ordered — order matters for R3
-  returnType:      string | 'inferred'; // 'inferred' = no annotation present, classifier skips R6/R7 when 'inferred', never default to 'any' — that is a real type
-  typeParameters?: string[];             // ['T extends Record<string,unknown>'], R13: generic constraint narrowed
-  // ── Modifiers ──────────────────────────────────────────────────────────────
-  exported:        boolean;              // R8:  exported → unexported
-  isDefaultExport: boolean;              // named vs default export — different import syntax, different breakage
-  async:           boolean;              // R11: sync → async (breaking), R21: async → sync (breaking)
-  isStatic?:       boolean;              // R17: static ↔ instance swap
-  isAbstract?:     boolean;              // abstract toggle — adding abstract forces subclasses to implement
-  isGenerator?:    boolean;              // function* toggle — changes iteration protocol, callers using next() break
-  isConstructor?:  boolean;              // R24: constructor sig change, keyed as 'ClassName#constructor'
-  isGetter?:       boolean;              // get accessor — property read semantics
-  isSetter?:       boolean;              // set accessor — property write semantics
-  // ── Class context ──────────────────────────────────────────────────────────
-  className?:      string;               // parent class name, prevents naming collisions when two classes both have a method called 'find'
-  accessModifier?: 'public' | 'protected' | 'private'; // R20: visibility narrowed, protected → private = breaking, public → protected = breaking       
-  // ── Metadata ───────────────────────────────────────────────────────────────
-  decorators?:     string[];             // ['Injectable', 'deprecated'], R16: decorator removed or changed
-  overloadIndex?:  number;              // 0, 1, 2 ... position in overload sequence, prevents overload signatures from overwriting each other in the Map
+  // ── Identity ────────────────────────────────────────────────────────────────
+  name:            string;              // 'processPayment' | 'Service#constructor'
+  line:            number;              // 1-indexed start line — used by reporter
+  filePath?:       string;              // optional — parser has no file knowledge
+                                        // injected by ASTMapper after parsing
+
+  // ── Signature shape ──────────────────────────────────────────────────────────
+  params:          Param[];             // ordered — order matters for R3
+  returnType:      string | 'inferred';// 'inferred' = no annotation present
+                                        // classifier skips R6/R7 when 'inferred'
+                                        // NEVER default to 'any' — that is a real type
+  typeParameters?: string[];            // ['T extends Record<string,unknown>']
+                                        // R13: generic constraint narrowed
+
+  // ── Modifiers ────────────────────────────────────────────────────────────────
+  exported:        boolean;             // R8:  exported → unexported
+  isDefaultExport: boolean;             // named vs default export
+                                        // different import syntax = different breakage
+  async:           boolean;             // R11: sync → async (breaking)
+                                        // R21: async → sync (breaking)
+  isStatic?:       boolean;             // R17: static ↔ instance swap
+  isAbstract?:     boolean;             // adding abstract forces subclasses to implement
+  isGenerator?:    boolean;             // function* toggle — changes iteration protocol
+                                        // callers using .next() break
+  isConstructor?:  boolean;             // R24: constructor sig change
+                                        // keyed as 'ClassName#constructor'
+  isGetter?:       boolean;             // get accessor — property read semantics
+  isSetter?:       boolean;             // set accessor — property write semantics
+
+  // ── Class context ────────────────────────────────────────────────────────────
+  className?:      string;              // parent class name
+                                        // prevents collisions when two classes
+                                        // both have a method called 'find'
+  accessModifier?: 'public'             // R20: visibility narrowed
+                 | 'protected'          // protected → private = breaking
+                 | 'private';           // public → protected = breaking
+
+  // ── Metadata ─────────────────────────────────────────────────────────────────
+  decorators?:     string[];            // ['Injectable', 'deprecated']
+                                        // R16: decorator removed or changed
+  overloadIndex?:  number;             // 0, 1, 2 — position in overload sequence
+                                        // prevents overloads overwriting each other
+                                        // in the signature Map
 }
+
+// ── InterfaceProperty ─────────────────────────────────────────────────────────
 
 export interface InterfaceProperty {
-  name: string;      // The name of the interface key
-  type: string;      // The type of the interface key
-  optional: boolean; // True if the key has a '?' modifier (Required for Rules R25/R26)
-  readonly?: boolean;// True if marked 'readonly' (Removing readonly from a prop is a breaking change)
+  name:      string;    // the property key name
+  type:      string;    // raw type string
+  optional:  boolean;   // has ? modifier — R25/R26
+  readonly?: boolean;   // interface property readonly IS valid TypeScript
+                        // removing readonly from a property = breaking change
+                        // callers that relied on immutability guarantee break
 }
+
+// ── InterfaceSignature ────────────────────────────────────────────────────────
 
 export interface InterfaceSignature {
-  properties: InterfaceProperty[]; // Array of all properties defined in the interface
-  exported: boolean;               // True if the interface is exported
-  isDefaultExport?: boolean;       // True if 'export default interface' (Edge Case 5)
-  typeParameters?: string[];       // Tracks generics on the interface like 'interface Response<T>'
-  extends?: string[];              // Parent interfaces (e.g., ['Base', 'Auditable']) — tracks inheritance changes
+  properties:      InterfaceProperty[];
+  exported:        boolean;
+  isDefaultExport?: boolean;
+  typeParameters?: string[];   // 'interface Response<T>'
+  extends?:        string[];   // ['Base', 'Auditable']
+                               // removing a parent interface = breaking
+                               // callers relying on inherited properties break
 }
+
+// ── EnumMember ────────────────────────────────────────────────────────────────
 
 export interface EnumMember {
-  name: string;        // The enum key (e.g., 'Active')
-  value?: string;      // The explicit initializer (e.g., '1'), undefined if auto-incremented
+  name:    string;   // the enum key: 'Active'
+  value?:  string;   // explicit initializer: '1'
+                     // undefined = auto-incremented
+                     // auto-incremented values shift when members are inserted
+                     // mid-enum — a silent but real breakage
 }
+
+// ── EnumSignature ─────────────────────────────────────────────────────────────
 
 export interface EnumSignature {
-  members: EnumMember[]; // Array of enum members with names and values (Required for Rule R27)
-  exported: boolean;     // True if the enum is exported
-  isDefaultExport?: boolean; // True if 'export default enum' (Edge Case 5)
+  members:          EnumMember[];
+  exported:         boolean;
+  isDefaultExport?: boolean;
 }
+
+// ── TypeAliasSignature ────────────────────────────────────────────────────────
 
 export interface TypeAliasSignature {
-  value: string;             // The raw string of what the type equals (e.g., "'active' | 'inactive'")
-  exported: boolean;         // True if the type alias is exported
-  isDefaultExport?: boolean; // True if 'export default type' (Edge Case 5)
-  typeParameters?: string[]; // Tracks generics on the type like 'type Node<T> = ...'
+  value:            string;    // raw string: "'active' | 'inactive'"
+  exported:         boolean;
+  isDefaultExport?: boolean;
+  typeParameters?:  string[];  // 'type Node<T> = ...'
 }
 
-export type ChangeType = 
-  | 'signature_change'         // Params changed, generics narrowed, async swapped, etc.
-  | 'return_type_widened'      // Gained null/undefined/never (Breaking)
-  | 'return_type_narrowed'     // any -> string (Non-breaking but flagged)
-  | 'visibility_changed'       // exported <-> unexported, static <-> instance, public -> private
-  | 'function_deleted'         // Symbol removed entirely from the codebase
-  | 'function_added'           // New symbol added to the codebase (Non-breaking)
-  | 'interface_property_added' // New required property added to an interface (Breaking)
-  | 'interface_property_removed' // Property removed from an interface (Breaking)
-  | 'enum_member_changed'      // Enum value removed, renamed, or re-assigned (Breaking)
-  | 'type_alias_changed';      // Type alias union narrowed or structurally changed (Breaking)
-
-export type Language = 'javascript' | 'typescript' | 'python' | 'go' | 'java' | 'rust';
+// ── CallSite ──────────────────────────────────────────────────────────────────
+// Produced by the tracer for each caller of a changed function.
 
 export interface CallSite {
-  file: string;      // The relative path to the file making the function call
-  lineStart: number; // The exact starting line number of the call (1-indexed)
-  lineEnd: number;   // The exact ending line number (Required to highlight multi-line calls in PR comments)
-  covered: boolean;  // True if a unit test file references this specific caller
+  file:      string;   // 'src/checkout/index.ts'
+  lineStart: number;   // 1-indexed start line of the call
+  lineEnd:   number;   // end line — needed for multi-line call highlighting in PR comments
+  covered:   boolean;  // true if a test file references this caller
 }
+
+// ── FunctionChange ────────────────────────────────────────────────────────────
+// Output of the classifier. One entry per changed symbol.
+// 'symbol' covers functions, interfaces, enums, and type aliases.
 
 export interface FunctionChange {
-  id: string;          // Unique identifier format: 'src/file.ts:ClassName.methodName:42'
-  name: string;        // The name of the function, interface, enum, or type alias
-  fingerprint?: string;// Structural hash of the AST body to correlate renames across line moves (Edge Case 1)
-  file: string;        // The relative path from the repository root
-  lineStart: number;   // The starting line number in the new file (0 if the symbol was deleted)
-  lineEnd: number;     // The ending line number in the new file
-  language: Language;  // The AST parser that generated this object (e.g., 'typescript')
-  symbolType: 'function' | 'interface' | 'enum' | 'type_alias'; // Tells the classifier which union type to expect below
-  before: FunctionSignature | InterfaceSignature | EnumSignature | TypeAliasSignature | null; // The state of the symbol in the base branch
-  after: FunctionSignature | InterfaceSignature | EnumSignature | TypeAliasSignature | null;  // The state of the symbol in the feature branch
-  changeType: ChangeType; // The finalized category assigned by the Classifier engine
-  breaking: boolean;      // True if the Classifier determined this change will crash downstream callers
-  callers: CallSite[];    // Array of files calling this symbol (Populated by the Tracer engine in Stage 4)
+  id:           string;     // unique: 'src/payments/processor.ts:processPayment:42'
+  name:         string;     // 'processPayment' | 'UserInterface' | 'Status'
+  fingerprint?: string;     // structural AST hash — correlates renames across line moves
+                            // v0.2 feature, optional in v0.1
+  file:         string;     // 'src/payments/processor.ts'
+  lineStart:    number;     // start line in new file (0 if deleted)
+  lineEnd:      number;     // end line in new file
+  language:     Language;   // which parser produced this
+  symbolType:   'function'  // discriminator — tells classifier which
+              | 'interface' // union branch to cast before/after to
+              | 'enum'
+              | 'type_alias';
+
+  before: FunctionSignature            // state at baseSha
+        | InterfaceSignature
+        | EnumSignature
+        | TypeAliasSignature
+        | null;                        // null = symbol was added (no before state)
+
+  after:  FunctionSignature            // state at headSha
+        | InterfaceSignature
+        | EnumSignature
+        | TypeAliasSignature
+        | null;                        // null = symbol was deleted (no after state)
+
+  changeType: ChangeType;
+  breaking:   boolean;      // true if classifier determined callers will break
+  severity:   Severity;     // breaking | warning | safe — reporter bucketing
+  callers:    CallSite[];   // populated by tracer (empty array after classifier)
 }
+
+// ── RiskFile ──────────────────────────────────────────────────────────────────
 
 export interface RiskFile {
-  path: string;   // The file path that is deemed risky
-  reason: string; // The human-readable explanation of why it is risky (e.g., 'Contains 4 broken call sites')
+  path:    string;                         // 'src/api/routes/payment.ts'
+  risk:    'critical' | 'high' | 'medium'; // risk tier
+  reason:  string;                         // 'Contains 4 broken call sites'
+  changes: number;                         // number of changed symbols in this file
 }
+
+// ── AnalysisResult ────────────────────────────────────────────────────────────
+// The complete output of the full pipeline. Consumed by all reporters.
 
 export interface AnalysisResult {
-  from: string;               // The human-readable base branch name (e.g., 'main')
-  to: string;                 // The human-readable head branch name (e.g., 'feat/update-api')
-  baseSha: string;            // The exact git commit hash of the base branch (Ensures CI/CD report immutability)
-  headSha: string;            // The exact git commit hash of the feature branch
-  riskScore: number;          // The final calculated integer from 0 to 100
-  breaking: FunctionChange[]; // Array of all symbols that had breaking changes
-  apiChanges: FunctionChange[];// Array of all symbols that changed (breaking and non-breaking)
-  testGaps: FunctionChange[]; // Array of broken symbols whose downstream callers lack unit tests
-  riskFiles: RiskFile[];      // Array of files flagged for high risk
+  from:        string;           // 'main'
+  to:          string;           // 'feature/payment-refactor'
+  baseSha:     string;           // exact commit hash — ensures report immutability
+  headSha:     string;           // exact commit hash
+  riskScore:   number;           // 0–100
+  breaking:    FunctionChange[]; // severity: 'breaking'
+  warnings:    FunctionChange[]; // severity: 'warning'  ← was missing
+  apiChanges:  FunctionChange[]; // all changes breaking + warning + safe
+  testGaps:    FunctionChange[]; // breaking changes whose callers lack tests
+  riskFiles:   RiskFile[];
 }
 
+// ── FileDiff ──────────────────────────────────────────────────────────────────
+// Output of git-diff.ts. Input to ast-mapper.ts.
+
 export interface FileDiff {
-  path:      string;  // relative path in repo e.g. 'src/payments/processor.ts'
-  language:  string;  // raw extension without dot e.g. 'ts' — ast-mapper resolves grammar
-  isNew:     boolean; // file was created in this diff
-  isDeleted: boolean; // file was deleted in this diff
-  isRenamed: boolean; // file was moved/renamed
-  oldPath:   string;  // original path before rename (same as path if not renamed)
-  oldSource: string;  // full text at baseSha  (empty string if isNew)
-  newSource: string;  // full text at headSha  (empty string if isDeleted)
+  path:      string;   // 'src/payments/processor.ts'
+  language:  string;   // raw extension: 'ts', 'py', 'go'
+  isNew:     boolean;
+  isDeleted: boolean;
+  isRenamed: boolean;
+  oldPath:   string;   // original path before rename (= path if not renamed)
+  oldSource: string;   // full text at baseSha (empty string if isNew)
+  newSource: string;   // full text at headSha (empty string if isDeleted)
+}
+
+// ── ParseResult ───────────────────────────────────────────────────────────────
+// Output of ast-mapper.ts per file. Input to classifier.ts.
+// The Map key is the symbol name — sig.name for functions,
+// property name for interfaces, member name for enums.
+
+export type AnySignature =
+  | FunctionSignature
+  | InterfaceSignature
+  | EnumSignature
+  | TypeAliasSignature;
+
+export interface ParseResult {
+  file:        string;
+  language:    Language;
+  oldSigs:     Map<string, AnySignature>;
+  newSigs:     Map<string, AnySignature>;
+  skipped:     boolean;
+  skipReason?: string;
 }
