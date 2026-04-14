@@ -31,7 +31,7 @@ export const syncToAsyncRule: FunctionRule = {
     if (!wasAsync && isNowAsync) {
       return {
         severity: 'breaking',
-        changeType: 'signature_change',
+        changeType: 'modifier_changed',
         message: `Function was converted from synchronous to asynchronous. Downstream callers will crash unless they are updated to use 'await' or '.then()'.`,
       };
     }
