@@ -4,3 +4,4 @@ export * from './R03_required_param_added';
 export * from './R04_param_type_narrowed';
 export * from './R05_optional_param_added';
 export * from './R06_return_nullable';
+export * from './R07_return_narrowed';
