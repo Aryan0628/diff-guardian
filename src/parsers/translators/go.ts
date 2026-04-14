@@ -348,6 +348,7 @@ function buildInterfaceSignature(
   const properties = extractInterfaceMethods(bodyNode);
 
   return {
+    line:            nameNode.startPosition.row + 1,
     properties,
     exported:        isExported(nameNode.text),
     isDefaultExport: false,
@@ -421,6 +422,7 @@ function buildStructSignature(
   if (!nameNode || !bodyNode) return null;
 
   return {
+    line:            nameNode.startPosition.row + 1,
     value:           bodyNode.text,
     exported:        isExported(nameNode.text),
     isDefaultExport: false,
@@ -442,6 +444,7 @@ function buildTypeAliasSignature(
   if (!nameNode || !valueNode) return null;
 
   return {
+    line:            nameNode.startPosition.row + 1,
     value:           valueNode.text,
     exported:        isExported(nameNode.text),
     isDefaultExport: false,

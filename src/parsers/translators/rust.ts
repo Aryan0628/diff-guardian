@@ -385,6 +385,7 @@ function buildTraitSignature(
   const bounds     = extractTraitBounds(traitNode);
 
   return {
+    line:            traitNode.startPosition.row + 1,
     properties,
     exported:        hasVisibilityModifier(traitNode),
     isDefaultExport: false,
@@ -485,6 +486,7 @@ function buildEnumSignature(
   }
 
   return {
+    line:            enumNode.startPosition.row + 1,
     members,
     exported:        hasVisibilityModifier(enumNode),
     isDefaultExport: false,
@@ -511,6 +513,7 @@ function buildStructSignature(
   );
 
   return {
+    line:            structNode.startPosition.row + 1,
     value:           bodyNode?.text ?? '()',
     exported:        hasVisibilityModifier(structNode),
     isDefaultExport: false,
@@ -533,6 +536,7 @@ function buildTypeAliasSignature(
   if (!aliasNode || !nameNode || !valueNode) return null;
 
   return {
+    line:            aliasNode.startPosition.row + 1,
     value:           valueNode.text,
     exported:        hasVisibilityModifier(aliasNode),
     isDefaultExport: false,
