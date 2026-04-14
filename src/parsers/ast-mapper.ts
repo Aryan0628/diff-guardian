@@ -186,11 +186,11 @@ export class ASTMapper {
 
       const rawMap = this.dispatch(tree, ext, lang);
 
-      // Inject filePath — the translator is a pure function with no file knowledge.
-      // ASTMapper is the only layer that knows both the filename and the signatures.
-      for (const sig of rawMap.values()) {
-        if (this.isFunctionSignature(sig)) {
-          sig.filePath = filePath;
+      // Inject filePath using O(1) Key Routing
+      for (const [key, sig] of rawMap.entries()) {
+        // If the key does NOT contain a colon, it is a FunctionSignature.
+        if (!key.includes(':')) {
+          (sig as FunctionSignature).filePath = filePath;
         }
       }
 
@@ -308,15 +308,6 @@ export class ASTMapper {
       skipReason: reason,
     };
   }
-
-  /**
-   * Type guard — distinguishes FunctionSignature from Interface/Enum/TypeAlias.
-   * Only FunctionSignature has a filePath field to inject.
-   */
-  private isFunctionSignature(sig: AnySignature): sig is FunctionSignature {
-    return 'params' in sig && 'exported' in sig;
-  }
-
   /**
    * Maps grammar codes to the correct WASM filename.
    * tsx uses the typescript grammar — tree-sitter-typescript ships both.
