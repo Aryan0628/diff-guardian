@@ -2,3 +2,4 @@ export * from './R01_param_removed';
 export * from './R02_param_reordered';
 export * from './R03_required_param_added';
 export * from './R04_param_type_narrowed';
+export * from './R05_optional_param_added';
