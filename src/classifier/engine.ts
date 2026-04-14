@@ -4,7 +4,7 @@ import * as rules from './rules/index';
 import { isDeepStrictEqual } from 'util';
 
 export class ClassifierEngine {
-  async compare(diff: ParseResult): Promise<FunctionChange[]> {
+  compare(diff: ParseResult): FunctionChange[] {
     const changes: FunctionChange[] = [];
     const { oldSigs, newSigs, file, language } = diff;
 
@@ -26,12 +26,12 @@ export class ClassifierEngine {
       const newSig = newSigs.get(key);
 
       if (oldSig && !newSig) {
-        changes.push(this.createChangeRecord(key, file, language, 'breaking', 'function_deleted', 'Symbol was removed from public API.', oldSig));
+        changes.push(this.createChangeRecord(key, file, language, 'breaking', 'symbol_deleted', 'Symbol was removed from public API.', oldSig));
         continue;
       }
 
       if (!oldSig && newSig) {
-        changes.push(this.createChangeRecord(key, file, language, 'safe', 'function_added', 'New symbol added.', undefined, newSig));
+        changes.push(this.createChangeRecord(key, file, language, 'safe', 'symbol_added', 'New symbol added.', undefined, newSig));
         continue;
       }
 

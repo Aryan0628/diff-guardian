@@ -44,8 +44,8 @@ export type ChangeType =
   | 'interface_property_removed' // R26: property removed from interface
   | 'enum_member_changed'        // R27: enum value removed, renamed, or re-assigned
   | 'type_alias_changed'         // type alias union narrowed or structurally changed
-  | 'function_deleted'           // R9:  symbol removed entirely
-  | 'function_added';            // R10: new symbol added (non-breaking)
+  | 'symbol_deleted'             // R9:  symbol removed entirely
+  | 'symbol_added';              // R10: new symbol added (non-breaking)
 
 
 export interface Param {
