@@ -124,6 +124,7 @@ export interface InterfaceProperty {
 // ── InterfaceSignature ────────────────────────────────────────────────────────
 
 export interface InterfaceSignature {
+  line:            number;     // 1-indexed start line
   properties:      InterfaceProperty[];
   exported:        boolean;
   isDefaultExport?: boolean;
@@ -146,6 +147,7 @@ export interface EnumMember {
 // ── EnumSignature ─────────────────────────────────────────────────────────────
 
 export interface EnumSignature {
+  line:             number;    // 1-indexed start line
   members:          EnumMember[];
   exported:         boolean;
   isDefaultExport?: boolean;
@@ -154,6 +156,7 @@ export interface EnumSignature {
 // ── TypeAliasSignature ────────────────────────────────────────────────────────
 
 export interface TypeAliasSignature {
+  line:             number;    // 1-indexed start line
   value:            string;    // raw string: "'active' | 'inactive'"
   exported:         boolean;
   isDefaultExport?: boolean;
@@ -203,6 +206,7 @@ export interface FunctionChange {
   changeType: ChangeType;
   breaking:   boolean;      // true if classifier determined callers will break
   severity:   Severity;     // breaking | warning | safe — reporter bucketing
+  message?:   string;       // reason for the violation reported by the classifier rule
   callers:    CallSite[];   // populated by tracer (empty array after classifier)
 }
 

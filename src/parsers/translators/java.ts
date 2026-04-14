@@ -320,6 +320,7 @@ function buildInterfaceSignature(
   const modifiers = getModifiers(ifaceNode);
 
   return {
+    line:            ifaceNode.startPosition.row + 1,
     properties:      extractInterfaceMethods(bodyNode),
     exported:        modifiers.has('public'),
     isDefaultExport: false,
@@ -425,6 +426,7 @@ function buildEnumSignature(
   }
 
   return {
+    line:            enumNode.startPosition.row + 1,
     members,
     exported:        modifiers.has('public'),
     isDefaultExport: false,

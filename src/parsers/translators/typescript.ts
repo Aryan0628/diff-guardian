@@ -352,6 +352,7 @@ function buildInterfaceSignature(
   if (!ifaceNode || !bodyNode) return null;
 
   return {
+    line:            ifaceNode.startPosition.row + 1,
     properties:      extractInterfaceProperties(bodyNode),
     exported:        isExported(ifaceNode),
     isDefaultExport: isDefaultExport(ifaceNode),
@@ -438,6 +439,7 @@ function buildEnumSignature(
   }
 
   return {
+    line:            enumNode.startPosition.row + 1,
     members,
     exported:        isExported(enumNode),
     isDefaultExport: isDefaultExport(enumNode),
@@ -458,6 +460,7 @@ function buildTypeAliasSignature(
   if (!aliasNode || !valueNode) return null;
 
   return {
+    line:            aliasNode.startPosition.row + 1,
     value:           valueNode.text,
     exported:        isExported(aliasNode),
     isDefaultExport: isDefaultExport(aliasNode),

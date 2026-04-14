@@ -269,6 +269,7 @@ function buildClassSignature(
   const extendsParents = extractBaseClasses(classNode);
 
   return {
+    line:            classNode.startPosition.row + 1,
     properties,
     exported:        isExported(nameNode.text),
     isDefaultExport: false,

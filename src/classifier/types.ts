@@ -41,6 +41,7 @@ export interface Rule<T extends AnySignature> {
    * The Engine will skip this rule entirely if the file's language isn't listed.
    */
   languages: Language[] | 'all';
+  target: 'function' | 'interface' | 'enum' | 'type_alias';
   
   /**
    * The core logic of the rule.
