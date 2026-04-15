@@ -169,6 +169,20 @@ export function extractJavaSignatures(
     result.set(sig.name, sig);
   }
 
+  // ── Inject overloadCount into stored signatures ────────────────────────────
+  // Java supports real method overloading (e.g., void foo(int) and void foo(String)).
+  // overloadCounts tracks how many times each method key appeared.
+  // For methods with >1 occurrence (overloaded), stamp the final count
+  // so the classifier (R15/R16) can detect overload additions/removals.
+  for (const [name, count] of overloadCounts) {
+    if (count > 1) {
+      const sig = result.get(name);
+      if (sig && 'params' in sig) {
+        (sig as FunctionSignature).overloadCount = count;
+      }
+    }
+  }
+
   // ── Interfaces ──────────────────────────────────────────────────────────────
 
   for (const match of q.iface.matches(tree.rootNode)) {
@@ -239,7 +253,7 @@ function buildMethodSignature(
 
     exported:        modifiers.has('public'),
     isDefaultExport: false,
-    async:           modifiers.has('synchronized'), // closest Java equivalent
+    async:           false, // Java has no language-level async/await
     isStatic:        isStatic || undefined,
     isAbstract:      modifiers.has('abstract') || undefined,
     isGenerator:     undefined,

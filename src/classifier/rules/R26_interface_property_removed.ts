@@ -12,7 +12,7 @@ export const interfacePropertyRemovedRule: InterfaceRule = {
   id: 'R26',
   name: 'Interface Property Removed',
   description: 'Flags when a property is completely deleted from an interface.',
-  languages: ['typescript'], // Interfaces are TS-specific
+  languages: ['typescript', 'java', 'go', 'rust'], // TS interfaces, Java interfaces, Go interfaces/structs, Rust traits
   target: 'interface',
 
   check(oldSig, newSig): RuleResult | RuleResult[] | null {

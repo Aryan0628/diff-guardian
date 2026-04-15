@@ -12,7 +12,7 @@ export const paramMutabilityNarrowedRule: FunctionRule = {
   id: 'R18',
   name: 'Parameter Mutability Narrowed',
   description: 'Flags when a parameter loses its readonly constraint.',
-  languages: ['typescript'], // Mutability modifiers at the param level are TS-specific
+  languages: ['typescript', 'rust'], // TS: readonly T[] → T[]; Rust: &mut T → &T
   target: 'function',
 
   check(oldSig, newSig): RuleResult | null {
@@ -46,6 +46,11 @@ export const paramMutabilityNarrowedRule: FunctionRule = {
  * Detects common TypeScript immutability patterns in type strings.
  */
 function isReadonly(typeString: string): boolean {
+  // Rust: '&T' is readonly, '&mut T' is mutable.
+  if (typeString.startsWith('&') && !typeString.startsWith('&mut ')) {
+    return true;
+  }
+  
   return (
     typeString.startsWith('readonly ') || 
     typeString.includes('Readonly<') || 

@@ -111,6 +111,9 @@ export interface FunctionSignature {
   overloadIndex?:  number;             // 0, 1, 2 — position in overload sequence
                                         // prevents overloads overwriting each other
                                         // in the signature Map
+  overloadCount?:  number;             // total number of overload signatures for this name
+                                        // R15/R16 compare old vs new counts to detect
+                                        // overload additions and removals
 }
 
 // ── InterfaceProperty ─────────────────────────────────────────────────────────

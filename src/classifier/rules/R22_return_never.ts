@@ -12,7 +12,7 @@ export const returnNeverRule: FunctionRule = {
   id: 'R22',
   name: 'Return Type Becomes Never',
   description: 'Flags when a return type transitions to the terminal never type.',
-  languages: ['typescript'], // 'never' is a TS-specific concept
+  languages: ['typescript', 'rust'], // TS: 'never'; Rust: '!' (diverging function)
   target: 'function',
 
   check(oldSig, newSig): RuleResult | null {
@@ -25,7 +25,7 @@ export const returnNeverRule: FunctionRule = {
     // If it becomes never, execution halts.
     // Note: We flag this even if oldReturn was 'inferred', because transitioning 
     // to 'never' is universally destructive to downstream execution flow.
-    if (newReturn === 'never') {
+    if (newReturn === 'never' || newReturn === '!') {
       return {
         severity: 'breaking',
         changeType: 'return_type_narrowed',

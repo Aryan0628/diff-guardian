@@ -13,7 +13,7 @@ export const interfacePropertyRequiredRule: InterfaceRule = {
   id: 'R25',
   name: 'Interface Property Made Required',
   description: 'Flags when a required property is added to an interface or an optional property becomes required.',
-  languages: ['typescript'], // Interfaces are a TS construct
+  languages: ['typescript', 'java', 'go', 'rust'], // TS interfaces, Java interfaces, Go interfaces/structs, Rust traits
   target: 'interface',
 
   check(oldSig, newSig): RuleResult | RuleResult[] | null {

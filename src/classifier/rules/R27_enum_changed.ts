@@ -11,7 +11,7 @@ export const enumChangedRule: EnumRule = {
   id: 'R27',
   name: 'Enum Member Changed',
   description: 'Flags destructive mutations to Enum members and values.',
-  languages: ['typescript'], // Enums are a TypeScript construct
+  languages: ['typescript', 'java', 'rust'], // TS enums, Java enums, Rust ADT enums
   target: 'enum',
 
   check(oldSig, newSig): RuleResult | RuleResult[] | null {

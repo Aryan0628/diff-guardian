@@ -10,6 +10,8 @@ export * from './R11_sync_to_async';
 export * from './R12_param_type_widened';
 export * from './R13_generic_narrowed';
 export * from './R14_rest_parameter';
+export * from './R15_overload_removed';
+export * from './R16_overload_added';
 export * from './R17_static_changed';
 export * from './R18_param_mutability_narrowed';
 export * from './R19_param_mutability_widened';

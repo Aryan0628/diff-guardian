@@ -37,7 +37,7 @@ export const returnNullableRule: FunctionRule = {
       
       return {
         severity: 'breaking',
-        changeType: 'signature_change', // Note: update core/types.ts if you prefer 'return_type_widened'
+        changeType: 'return_type_widened',
         message: `Return type widened to include '${addedTerm}'. Callers lacking null-checks will crash at runtime.`,
       };
     }

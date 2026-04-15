@@ -235,6 +235,19 @@ export function extractTSSignatures(
     result.set(sig.name, sig);
   }
 
+  // ── Inject overloadCount into stored signatures ────────────────────────────
+  // overloadCounts tracks how many times each function name appeared.
+  // For functions with >1 occurrence (overloaded), stamp the final count
+  // so the classifier (R15/R16) can detect overload additions/removals.
+  for (const [name, count] of overloadCounts) {
+    if (count > 1) {
+      const sig = result.get(name);
+      if (sig && 'params' in sig) {
+        (sig as FunctionSignature).overloadCount = count;
+      }
+    }
+  }
+
   // ── Interfaces ─────────────────────────────────────────────────────────────
 
   for (const match of q.iface.matches(tree.rootNode)) {
