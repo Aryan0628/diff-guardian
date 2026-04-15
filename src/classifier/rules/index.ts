@@ -16,3 +16,4 @@ export * from './R19_param_mutability_widened';
 export * from './R20_visibility_narrowed';
 export * from './R21_async_to_sync';
 export * from './R22_return_never';
+export * from './R23_default_value_changed';
