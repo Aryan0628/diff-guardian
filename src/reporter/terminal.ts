@@ -46,6 +46,7 @@ export const TerminalReporter: Reporter = {
       } else {
         console.log(chalk.bgRed.white.bold(' [STRICT MODE] '));
         console.log(chalk.red('Breaking changes found. Exiting with code 1.'));
+        console.log(chalk.yellow('\nIf this breaking change is intentional, use the native bypass: `git push --no-verify`'));
       }
     } else {
       console.log(chalk.bgGreen.black.bold(' [PASSED] '));
