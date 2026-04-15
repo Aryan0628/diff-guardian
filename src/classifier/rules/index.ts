@@ -13,3 +13,4 @@ export * from './R14_rest_parameter';
 export * from './R17_static_changed';
 export * from './R18_param_mutability_narrowed';
 export * from './R19_param_mutability_widened';
+export * from './R20_visibility_narrowed';
