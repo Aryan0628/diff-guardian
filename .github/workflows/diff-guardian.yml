@@ -1,0 +1,30 @@
+name: "Diff-Guardian"
+
+on:
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  analyze:
+    name: API Contract Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Needed for comprehensive diff analysis
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          
+      - name: Install Dependencies
+        run: npm ci
+        
+      - name: Run Diff-Guardian
+        env:
+          GITHUB_ACTIONS: true
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx dg

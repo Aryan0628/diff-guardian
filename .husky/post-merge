@@ -1,0 +1,4 @@
+#!/bin/sh
+
+echo " Diff-Guardian: Running post-merge API contract check..."
+npx dg

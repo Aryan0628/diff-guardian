@@ -5,9 +5,11 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "diff-guardian": "./dist/index.js"
+    "diff-guardian": "./dist/cli.js",
+    "dg": "./dist/cli.js"
   },
   "scripts": {
+    "prepare": "husky",
     "init": "npm install && npm run build:grammars",
     "build": "tsc",
     "build:grammars": "mkdir -p grammars && npx tree-sitter build --wasm ./node_modules/tree-sitter-typescript/typescript && npx tree-sitter build --wasm ./node_modules/tree-sitter-javascript && npx tree-sitter build --wasm ./node_modules/tree-sitter-python && npx tree-sitter build --wasm ./node_modules/tree-sitter-java && npx tree-sitter build --wasm ./node_modules/tree-sitter-rust && npx tree-sitter build --wasm ./node_modules/tree-sitter-go && mv *.wasm ./grammars/",
@@ -36,13 +38,15 @@
     "tree-sitter-python": "^0.21.0",
     "tree-sitter-rust": "^0.21.0",
     "tree-sitter-typescript": "^0.21.0",
-    "web-tree-sitter": "^0.22.2"
+    "web-tree-sitter": "^0.26.8"
   },
   "devDependencies": {
+    "@types/minimist": "^1.2.5",
     "@types/node": "^20.11.0",
+    "husky": "^9.0.11",
+    "tree-sitter-cli": "^0.26.8",
     "tsx": "^4.7.1",
     "typescript": "^5.4.0",
-    "vitest": "^1.3.0",
-    "tree-sitter-cli": "^0.22.2"
+    "vitest": "^4.1.4"
   }
 }
