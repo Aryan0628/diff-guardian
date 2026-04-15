@@ -6,4 +6,5 @@ export * from './R05_optional_param_added';
 export * from './R06_return_nullable';
 export * from './R07_return_narrowed';
 export * from './R08_unexported';
-export * from './R11_sync_to_async'
+export * from './R11_sync_to_async';
+export * from './R12_param_type_widened'; 
