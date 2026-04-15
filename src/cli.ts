@@ -109,7 +109,7 @@ async function main() {
       const exitCode = await runPipeline({ baseSha, headSha, repoRoot, config: reporterConfig });
       process.exit(exitCode);
     } catch (e: any) {
-      console.error(chalk.red(`\n❌ Pipeline Error: ${e.message}`));
+      console.error(chalk.red(`\n Pipeline Error: ${e.message}`));
       process.exit(2);
     }
   }
