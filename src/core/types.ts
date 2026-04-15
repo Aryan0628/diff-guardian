@@ -47,7 +47,10 @@ export type ChangeType =
   | 'symbol_deleted'             // R9:  symbol removed entirely
   | 'symbol_added';              // R10: new symbol added (non-breaking)
 
-
+export interface TypeParameter {
+  name: string;        // e.g., 'T'
+  constraint?: string; // e.g., 'Record<string, unknown>'
+}
 export interface Param {
   name:          string;    // 'userId', '{...}', '[...]', '...args'
   type:          string;    // raw text: 'string', 'User | null', 'readonly string[]'
@@ -76,7 +79,7 @@ export interface FunctionSignature {
   returnType:      string | 'inferred';// 'inferred' = no annotation present
                                         // classifier skips R6/R7 when 'inferred'
                                         // NEVER default to 'any' — that is a real type
-  typeParameters?: string[];            // ['T extends Record<string,unknown>']
+  typeParameters?: TypeParameter[];     // ['T extends Record<string,unknown>']
                                         // R13: generic constraint narrowed
 
   // ── Modifiers ────────────────────────────────────────────────────────────────
