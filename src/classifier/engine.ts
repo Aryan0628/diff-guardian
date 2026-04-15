@@ -24,17 +24,36 @@ export class ClassifierEngine {
     for (const key of allKeys) {
       const oldSig = oldSigs.get(key);
       const newSig = newSigs.get(key);
-
+      // Case A: Deletions (R09: Symbol Deleted OR R15: Overload Removed)
       if (oldSig && !newSig) {
-        changes.push(this.createChangeRecord(key, file, language, 'breaking', 'symbol_deleted', 'Symbol was removed from public API.', oldSig));
+        const isOverload = 'overloadIndex' in oldSig && oldSig.overloadIndex !== undefined;
+        
+        changes.push(this.createChangeRecord(
+          key, file, language, 
+          'breaking', 
+          isOverload ? 'overload_changed' : 'symbol_deleted', 
+          isOverload 
+            ? `Function overload removed. Callers relying on this specific signature will fail to compile.` 
+            : `Symbol was removed from public API.`, 
+          oldSig
+        ));
         continue;
       }
-
+      // Case B: Additions (R10: Symbol Added OR R16: Overload Added)
       if (!oldSig && newSig) {
-        changes.push(this.createChangeRecord(key, file, language, 'safe', 'symbol_added', 'New symbol added.', undefined, newSig));
+        const isOverload = 'overloadIndex' in newSig && newSig.overloadIndex !== undefined;
+
+        changes.push(this.createChangeRecord(
+          key, file, language, 
+          'safe', 
+          isOverload ? 'overload_changed' : 'symbol_added', 
+          isOverload 
+            ? `Safe change: New function overload added.` 
+            : `New symbol added.`, 
+          undefined, newSig
+        ));
         continue;
       }
-
       if (oldSig && newSig) {
         // Deep Equality Short-Circuit
         if (isDeepStrictEqual(oldSig, newSig)) continue;
