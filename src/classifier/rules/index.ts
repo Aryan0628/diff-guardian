@@ -10,3 +10,4 @@ export * from './R11_sync_to_async';
 export * from './R12_param_type_widened';
 export * from './R13_generic_narrowed';
 export * from './R14_rest_parameter';
+export * from './R17_static_changed';
