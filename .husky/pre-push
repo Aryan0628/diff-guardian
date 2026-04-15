@@ -1,0 +1,6 @@
+#!/bin/sh
+
+# The Native Escape Hatch
+# If developer ran git push --no-verify, this hook is skipped entirely internally by Git.
+echo " Diff-Guardian: Running pre-push API contract gatekeeper..."
+npx dg

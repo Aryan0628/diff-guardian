@@ -233,7 +233,6 @@ export interface AnalysisResult {
   to:          string;           // 'feature/payment-refactor'
   baseSha:     string;           // exact commit hash — ensures report immutability
   headSha:     string;           // exact commit hash
-  riskScore:   number;           // 0–100
   breaking:    FunctionChange[]; // severity: 'breaking'
   warnings:    FunctionChange[]; // severity: 'warning'  ← was missing
   apiChanges:  FunctionChange[]; // all changes breaking + warning + safe
