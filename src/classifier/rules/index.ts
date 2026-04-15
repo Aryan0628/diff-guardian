@@ -19,4 +19,4 @@ export * from './R22_return_never';
 export * from './R23_default_value_changed';
 export * from './R24_constructor_changed';
 export * from './R25_interface_property_required';
-
+export * from './R26_interface_property_removed';
