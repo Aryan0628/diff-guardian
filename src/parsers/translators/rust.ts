@@ -42,6 +42,7 @@ import {
   EnumMember,
   TypeAliasSignature,
   Param,
+  TypeParameter,
 } from '../../core/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -675,16 +676,16 @@ function extractAttributes(node: SyntaxNode): string[] | undefined {
   return attrs.length > 0 ? attrs : undefined;
 }
 
-function extractTypeParameters(node: SyntaxNode): string[] | undefined {
+function extractTypeParameters(node: SyntaxNode): TypeParameter[] | undefined {
   const typeParams = node.children.find(
     c => c.type === 'type_parameters'
   );
   if (!typeParams) return undefined;
 
-  const params: string[] = [];
+  const params: TypeParameter[] = [];
   for (const child of typeParams.namedChildren) {
     // type_identifier, constrained_type_parameter, lifetime, etc.
-    params.push(child.text);
+    params.push({ name: child.text });
   }
   return params.length > 0 ? params : undefined;
 }

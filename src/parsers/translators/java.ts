@@ -38,6 +38,7 @@ import {
   EnumSignature,
   EnumMember,
   Param,
+  TypeParameter,
 } from '../../core/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -563,16 +564,16 @@ function extractAnnotations(node: SyntaxNode): string[] | undefined {
   return annotations.length > 0 ? annotations : undefined;
 }
 
-function extractTypeParameters(node: SyntaxNode): string[] | undefined {
+function extractTypeParameters(node: SyntaxNode): TypeParameter[] | undefined {
   const typeParams = node.children.find(
     c => c.type === 'type_parameters'
   );
   if (!typeParams) return undefined;
 
-  const params: string[] = [];
+  const params: TypeParameter[] = [];
   for (const child of typeParams.namedChildren) {
     if (child.type === 'type_parameter') {
-      params.push(child.text);
+      params.push({ name: child.text });
     }
   }
   return params.length > 0 ? params : undefined;

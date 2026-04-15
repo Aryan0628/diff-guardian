@@ -48,6 +48,7 @@ import {
   EnumMember,
   TypeAliasSignature,
   Param,
+  TypeParameter,
 } from '../../core/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -106,7 +107,7 @@ const CTOR_QUERY_SRC = `
 const INTERFACE_QUERY_SRC = `
   (interface_declaration
     name: (type_identifier) @name
-    body: (object_type) @body
+    body: (interface_body) @body
   ) @iface
 `;
 
@@ -496,21 +497,23 @@ function extractParams(paramsNode: SyntaxNode): Param[] {
 
       // ── Required parameter: x: string ──────────────────────────────────────
       case 'required_parameter': {
-        const nameNode = child.childForFieldName('name');
+        const nameNode = child.childForFieldName('pattern');
         const typeNode = child.childForFieldName('type');
+        const isRest = nameNode?.type === 'rest_pattern' || (nameNode?.text || '').startsWith('...');
+        
         params.push({
-          name:       sanitizeName(nameNode),
+          name:       isRest && nameNode ? '...' + sanitizeName(nameNode).replace(/^\.\.\./, '') : sanitizeName(nameNode),
           type:       extractType(typeNode),
           optional:   false,
           hasDefault: false,
-          isRest:     false,
+          isRest,
         });
         break;
       }
 
       // ── Optional parameter: x?: string  |  x = 'val'  |  x?: string = 'v' ─
       case 'optional_parameter': {
-        const nameNode  = child.childForFieldName('name');
+        const nameNode  = child.childForFieldName('pattern');
         const typeNode  = child.childForFieldName('type');
         const valueNode = child.childForFieldName('value');
         params.push({
@@ -524,12 +527,12 @@ function extractParams(paramsNode: SyntaxNode): Param[] {
         break;
       }
 
-      // ── Rest parameter: ...args: string[] ──────────────────────────────────
+      // ── Rest parameter: ...args: string[] (fallback for older TS grammars) ─
       case 'rest_parameter': {
-        const nameNode = child.childForFieldName('name');
+        const nameNode = child.childForFieldName('pattern') || child;
         const typeNode = child.childForFieldName('type');
         params.push({
-          name:       '...' + (nameNode?.text ?? 'args'),
+          name:       '...' + sanitizeName(nameNode).replace(/^\.\.\./, ''),
           type:       extractType(typeNode),
           optional:   true,  // rest params are always optional
           hasDefault: false,
@@ -697,16 +700,21 @@ function getAccessModifier(
 // Generic / decorator / type parameter extractors
 // ─────────────────────────────────────────────────────────────────────────────
 
-function extractTypeParameters(node: SyntaxNode): string[] | undefined {
+function extractTypeParameters(node: SyntaxNode): TypeParameter[] | undefined {
   const typeParams = node.children.find(
     c => c.type === 'type_parameters'
   );
   if (!typeParams) return undefined;
 
-  const params: string[] = [];
+  const params: TypeParameter[] = [];
   for (const child of typeParams.namedChildren) {
     if (child.type === 'type_parameter') {
-      params.push(child.text);
+      const nameNode = child.childForFieldName('name') || child;
+      const constraintNode = child.childForFieldName('constraint');
+      params.push({
+        name: nameNode.text,
+        constraint: constraintNode ? constraintNode.text : undefined,
+      });
     }
   }
   return params.length > 0 ? params : undefined;

@@ -131,7 +131,7 @@ export interface InterfaceSignature {
   properties:      InterfaceProperty[];
   exported:        boolean;
   isDefaultExport?: boolean;
-  typeParameters?: string[];   // 'interface Response<T>'
+  typeParameters?: TypeParameter[];   // 'interface Response<T>'
   extends?:        string[];   // ['Base', 'Auditable']
                                // removing a parent interface = breaking
                                // callers relying on inherited properties break
@@ -163,7 +163,7 @@ export interface TypeAliasSignature {
   value:            string;    // raw string: "'active' | 'inactive'"
   exported:         boolean;
   isDefaultExport?: boolean;
-  typeParameters?:  string[];  // 'type Node<T> = ...'
+  typeParameters?:  TypeParameter[];  // 'type Node<T> = ...'
 }
 
 // ── CallSite ──────────────────────────────────────────────────────────────────

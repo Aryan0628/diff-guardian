@@ -21,3 +21,6 @@ diff-guardian-v2.pdf
 
 # Tree-sitter WASM grammars
 /grammars/*.wasm
+
+/vitest.config.ts
+/tests
