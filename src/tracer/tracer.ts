@@ -7,12 +7,18 @@
  * files from the JIT Scanner (Phase 2) and parses ONLY those files to extract
  * exact call sites.
  *
+ * Multi-language support:
+ *   The tracer is language-agnostic. All language-specific behavior (AST queries,
+ *   argument counting, enum access walking) is delegated to LanguageStrategy
+ *   implementations. Grammars are loaded lazily on first use per language.
+ *
  * This is where the "No False Positives" guarantee comes from:
  *   - Spread arguments → indeterminate, never flagged as broken
  *   - Aliased imports → tracked via ImportReference.localName
  *   - Method calls → matched by identifier, not just bare function calls
  *   - Old↔New correlation → index-based matching, not line numbers
  *   - Overloaded functions → valid-count set, not single expected count
+ *   - Namespace verification → strategy.verifyCallTarget() prevents false matches
  *
  * The tracer NEVER touches files that aren't in Phase 2's output.
  * If the repo has 10,000 files and only 15 import the broken function,
@@ -41,67 +47,65 @@ import {
   FileDiff,
 } from '../core/types';
 
+import {
+  getStrategyForFile,
+  type LanguageStrategy,
+  type RawCallSite,
+  type RawEnumAccess,
+} from './languages';
+
 const execAsync = promisify(exec);
 const MAX_BUFFER = 10 * 1024 * 1024;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tree-sitter query for call expressions
+// Lazy grammar cache — one entry per language, loaded on first use
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Q1: Direct function calls — processPayment(arg1, arg2)
- * Captures the callee identifier and the arguments list.
- */
-const CALL_EXPR_QUERY_SRC = `
-  (call_expression
-    function: (identifier) @callee
-    arguments: (arguments) @args
-  ) @call
-`;
-
-/**
- * Q2: Method/member calls — obj.processPayment(arg1, arg2)
- * Captures the property name (the method) and the arguments list.
- */
-const MEMBER_CALL_QUERY_SRC = `
-  (call_expression
-    function: (member_expression
-      property: (property_identifier) @callee
-    )
-    arguments: (arguments) @args
-  ) @call
-`;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Compiled query cache
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface TracerQueries {
-  directCall: Query;
-  memberCall: Query;
+interface GrammarEntry {
+  parser:   Parser;
+  language: WasmLanguage;
+  queries:  Map<string, Query>;   // query source → compiled Query
 }
 
-let cachedTracerLang: WasmLanguage | null = null;
-let cachedTracerQueries: TracerQueries | null = null;
+const grammarCache = new Map<string, GrammarEntry>();
+let parserInitialized = false;
 
-function getTracerQueries(language: WasmLanguage): TracerQueries {
-  if (cachedTracerQueries && cachedTracerLang === language) {
-    return cachedTracerQueries;
+/**
+ * Loads (or retrieves from cache) the grammar for a language strategy.
+ * JIT loading — first call for a language pays the ~10ms WASM load cost,
+ * subsequent calls return instantly from the cache.
+ */
+async function getGrammar(strategy: LanguageStrategy): Promise<GrammarEntry> {
+  const cached = grammarCache.get(strategy.id);
+  if (cached) return cached;
+
+  // Ensure Parser.init() has been called (idempotent)
+  if (!parserInitialized) {
+    await Parser.init();
+    parserInitialized = true;
   }
 
-  // Dispose old queries
-  if (cachedTracerQueries) {
-    cachedTracerQueries.directCall.delete();
-    cachedTracerQueries.memberCall.delete();
-  }
+  const parser = new Parser();
+  const wasmPath = path.resolve(__dirname, '..', '..', 'grammars', strategy.grammarFile);
+  const language = await WasmLanguage.load(wasmPath);
+  parser.setLanguage(language);
 
-  cachedTracerLang = language;
-  cachedTracerQueries = {
-    directCall: new Query(language, CALL_EXPR_QUERY_SRC),
-    memberCall: new Query(language, MEMBER_CALL_QUERY_SRC),
-  };
+  const entry: GrammarEntry = { parser, language, queries: new Map() };
+  grammarCache.set(strategy.id, entry);
 
-  return cachedTracerQueries;
+  return entry;
+}
+
+/**
+ * Compiles (or retrieves from cache) a tree-sitter query for a grammar.
+ */
+function getQuery(grammar: GrammarEntry, querySrc: string): Query {
+  const cached = grammar.queries.get(querySrc);
+  if (cached) return cached;
+
+  const query = new Query(grammar.language, querySrc);
+  grammar.queries.set(querySrc, query);
+  return query;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -110,8 +114,6 @@ function getTracerQueries(language: WasmLanguage): TracerQueries {
 
 export class CallSiteTracer {
 
-  private parser: Parser | null = null;
-  private language: WasmLanguage | null = null;
   private config: TracerConfig;
 
   constructor(config: TracerConfig) {
@@ -121,23 +123,18 @@ export class CallSiteTracer {
   // ── 1. Initialization ──────────────────────────────────────────────────────
 
   /**
-   * Initializes the tree-sitter WASM runtime and loads the TypeScript grammar.
-   * MUST be called once before trace().
+   * Initializes the tree-sitter WASM runtime.
+   * Grammars are loaded lazily per language — this just ensures the runtime is ready.
    * Idempotent — safe to call multiple times.
    */
   async init(): Promise<void> {
-    if (this.parser) return;
-
-    await Parser.init();
-    this.parser = new Parser();
-
-    // Load TypeScript grammar — covers both TS and JS
-    const wasmPath = path.resolve(__dirname, '..', '..', 'grammars', 'tree-sitter-typescript.wasm');
-    this.language = await WasmLanguage.load(wasmPath);
-    this.parser.setLanguage(this.language);
+    if (!parserInitialized) {
+      await Parser.init();
+      parserInitialized = true;
+    }
   }
 
-  // ── 2. Main entry point ────────────────────────────────────────────────────
+  // ── 2. Main entry point: Function tracing ──────────────────────────────────
 
   /**
    * Traces all call sites for a single FunctionChange.
@@ -153,10 +150,6 @@ export class CallSiteTracer {
     importers: ImportReference[],
     diffs:     FileDiff[],
   ): Promise<TracerResult> {
-    if (!this.parser || !this.language) {
-      throw new Error('[tracer] Not initialized. Call await tracer.init() first.');
-    }
-
     const result: TracerResult = {
       functionName:      change.name,
       totalFilesGrepped: 0,
@@ -200,19 +193,146 @@ export class CallSiteTracer {
     return result;
   }
 
+  // ── 2b. Enum tracing entry point ───────────────────────────────────────────
+
+  /**
+   * Traces all access sites for a broken enum.
+   *
+   * Unlike function tracing (which counts arguments), enum tracing finds
+   * every EnumName.MemberName access where MemberName was removed or changed.
+   *
+   * Checks strategy.supportsEnumTracing — skips Go (flat const, no namespace).
+   *
+   * @param enumName       — the enum identifier: 'Status'
+   * @param brokenMembers  — all affected member names: ['Active', 'Suspended']
+   * @param removedMembers — members that were deleted
+   * @param changedMembers — members whose values changed
+   * @param importers      — files that import this enum (from the scanner)
+   * @param diffs          — the PR's FileDiff[] (for old↔new correlation)
+   */
+  async traceEnum(
+    enumName:       string,
+    brokenMembers:  string[],
+    removedMembers: string[],
+    changedMembers: string[],
+    importers:      ImportReference[],
+    diffs:          FileDiff[],
+  ): Promise<TracerResult> {
+    const result: TracerResult = {
+      functionName:      enumName,
+      totalFilesGrepped: 0,
+      importersFound:    importers.length,
+      barrelsTraversed:  0,
+      callSites:         [],
+      errors:            [],
+    };
+
+    const removedSet = new Set(removedMembers);
+    const changedSet = new Set(changedMembers);
+    const memberSet  = new Set(brokenMembers);
+
+    // Build diff lookup
+    const diffMap = new Map<string, FileDiff>();
+    for (const diff of diffs) {
+      diffMap.set(this.normalizePath(diff.path), diff);
+    }
+
+    // Cap files traced
+    const filesToTrace = importers
+      .filter(imp => !imp.isBarrel)
+      .slice(0, this.config.maxTracerFiles);
+
+    for (const importer of filesToTrace) {
+      try {
+        // ── Resolve strategy for this file ─────────────────────────────
+        const strategy = getStrategyForFile(importer.filePath);
+        if (!strategy || !strategy.supportsEnumTracing) continue;
+
+        const grammar = await getGrammar(strategy);
+        const normalizedPath = this.normalizePath(importer.filePath);
+        const diff = diffMap.get(normalizedPath);
+
+        // Get new source (HEAD version)
+        const newSource = diff
+          ? diff.newSource
+          : await this.getFileContent(importer.filePath);
+
+        if (!newSource) continue;
+
+        // Extract all EnumName.MemberName access patterns in new source
+        const newAccess = this.extractEnumAccess(
+          grammar, strategy, newSource, enumName, memberSet, importer.filePath
+        );
+
+        // If file is in the diff, also parse old source for "Fixed" detection
+        let oldAccess: RawEnumAccess[] = [];
+        if (diff && diff.oldSource) {
+          oldAccess = this.extractEnumAccess(
+            grammar, strategy, diff.oldSource, enumName, memberSet, importer.filePath
+          );
+        }
+
+        // Classify each access point
+        for (const access of newAccess) {
+          const isBroken = removedSet.has(access.memberName) || changedSet.has(access.memberName);
+
+          let isFixed = false;
+          if (diff && !isBroken) {
+            const oldHadThis = oldAccess.some(
+              o => o.memberName === access.memberName
+            );
+            isFixed = oldHadThis;
+          }
+
+          result.callSites.push({
+            file:            access.filePath,
+            lineStart:       access.lineStart,
+            lineEnd:         access.lineEnd,
+            argumentCount:   0,
+            isBroken,
+            isFixed,
+            isIndeterminate: false,
+            covered:         false,
+          });
+        }
+
+        // Detect fixed accesses — old source had the broken member, new source doesn't
+        if (diff && diff.oldSource) {
+          for (const oldAcc of oldAccess) {
+            const stillExists = newAccess.some(
+              n => n.memberName === oldAcc.memberName &&
+                   n.lineStart === oldAcc.lineStart
+            );
+            if (!stillExists) {
+              result.callSites.push({
+                file:            oldAcc.filePath,
+                lineStart:       oldAcc.lineStart,
+                lineEnd:         oldAcc.lineEnd,
+                argumentCount:   0,
+                isBroken:        false,
+                isFixed:         true,
+                isIndeterminate: false,
+                covered:         false,
+              });
+            }
+          }
+        }
+      } catch (err: any) {
+        result.errors.push(
+          `Failed to trace enum "${enumName}" in "${importer.filePath}": ${err.message}`
+        );
+      }
+    }
+
+    return result;
+  }
+
   // ── 3. Per-file tracing ────────────────────────────────────────────────────
 
   /**
    * Traces call sites in a single file.
-   *
-   * The key insight: we check if this file is in the PR diff.
-   *
-   * - NOT in diff → parse the current (HEAD) version only.
-   *   Any call site with wrong argument count is "broken."
-   *
-   * - IN the diff → parse BOTH old and new versions.
-   *   Compare call sites by index order. If a call was broken in old
-   *   but correct in new, mark it as "Fixed" by the developer.
+   * Resolves the language strategy from file extension and uses
+   * the strategy's queries for call expression detection.
    */
   private async traceFile(
     importer:    ImportReference,
@@ -220,6 +340,12 @@ export class CallSiteTracer {
     validCounts: Set<number> | { min: number; max: number },
     diffMap:     Map<string, FileDiff>,
   ): Promise<CallSite[]> {
+
+    // ── Resolve strategy and grammar ──────────────────────────────────────
+    const strategy = getStrategyForFile(importer.filePath);
+    if (!strategy) return [];
+
+    const grammar = await getGrammar(strategy);
 
     const normalizedPath = this.normalizePath(importer.filePath);
     const diff = diffMap.get(normalizedPath);
@@ -229,21 +355,16 @@ export class CallSiteTracer {
 
     if (diff) {
       // ── File IS in the PR diff ─────────────────────────────────────────
-      // Parse both old and new versions for comparison
       return this.traceChangedFile(
-        importer.filePath,
-        searchName,
-        diff.oldSource,
-        diff.newSource,
-        validCounts,
+        grammar, strategy, importer.filePath, searchName,
+        diff.oldSource, diff.newSource, validCounts,
       );
     } else {
       // ── File is NOT in the PR diff ─────────────────────────────────────
-      // Parse only the HEAD version
       const source = await this.getFileContent(importer.filePath);
       if (!source) return [];
 
-      const newSites = this.extractCallSites(source, searchName, importer.filePath);
+      const newSites = this.extractCallSites(grammar, strategy, source, searchName, importer.filePath);
       return this.classifyCallSites(newSites, validCounts, false);
     }
   }
@@ -253,16 +374,10 @@ export class CallSiteTracer {
   /**
    * Traces a file that exists in the PR diff.
    * Compares old and new call sites by INDEX ORDER to detect fixes.
-   *
-   * Why index order, not line numbers?
-   *   Line numbers shift when code is added/removed above a call site.
-   *   But the N-th call to processPayment() in the old file corresponds
-   *   to the N-th call in the new file (assuming no calls were added/removed).
-   *
-   * When calls ARE added/removed, we fall back to treating each new-source
-   * call site independently.
    */
   private traceChangedFile(
+    grammar:     GrammarEntry,
+    strategy:    LanguageStrategy,
     filePath:    string,
     searchName:  string,
     oldSource:   string,
@@ -270,36 +385,26 @@ export class CallSiteTracer {
     validCounts: Set<number> | { min: number; max: number },
   ): CallSite[] {
 
-    // Parse both versions
     const oldSites = oldSource
-      ? this.extractCallSites(oldSource, searchName, filePath)
+      ? this.extractCallSites(grammar, strategy, oldSource, searchName, filePath)
       : [];
     const newSites = newSource
-      ? this.extractCallSites(newSource, searchName, filePath)
+      ? this.extractCallSites(grammar, strategy, newSource, searchName, filePath)
       : [];
 
-    // If no call sites in new source — nothing to report
     if (newSites.length === 0) return [];
 
     // ── Correlate by index ───────────────────────────────────────────────
-    // If the count matches, we can do 1:1 correlation
     if (oldSites.length === newSites.length) {
       return this.correlateByIndex(oldSites, newSites, validCounts);
     }
 
     // ── Count mismatch — calls were added or removed ─────────────────────
-    // Fall back to independent classification of new-source sites
-    // with best-effort "Fixed" detection via argument count comparison
-    return this.classifyWithBestEffortCorrelation(
-      oldSites,
-      newSites,
-      validCounts,
-    );
+    return this.classifyWithBestEffortCorrelation(oldSites, newSites, validCounts);
   }
 
   /**
    * 1:1 index correlation when call count is unchanged.
-   * old[0] ↔ new[0], old[1] ↔ new[1], etc.
    */
   private correlateByIndex(
     oldSites: RawCallSite[],
@@ -317,23 +422,18 @@ export class CallSiteTracer {
         ? this.isValidArgCount(oldSite.argumentCount, validCounts)
         : true;
 
-      // Determine status
       let isBroken = false;
       let isFixed = false;
 
       if (newSite.hasSpread) {
-        // Spread argument — indeterminate, never broken
         isBroken = false;
         isFixed = false;
       } else if (isNewValid) {
-        // New call is valid
         if (oldSite && !wasOldValid && !oldSite.hasSpread) {
-          // Was broken in old, fixed in new → developer fixed it
           isFixed = true;
         }
         isBroken = false;
       } else {
-        // New call has wrong argument count
         isBroken = true;
         isFixed = false;
       }
@@ -346,7 +446,7 @@ export class CallSiteTracer {
         isBroken,
         isFixed,
         isIndeterminate: newSite.hasSpread,
-        covered:         false, // populated later by test gap analysis
+        covered:         false,
       });
     }
 
@@ -354,16 +454,13 @@ export class CallSiteTracer {
   }
 
   /**
-   * Best-effort correlation when call counts differ (calls added/removed).
-   * Classifies each new-source call independently, then checks if any
-   * old-source calls with matching argument counts existed (heuristic fix detection).
+   * Best-effort correlation when call counts differ.
    */
   private classifyWithBestEffortCorrelation(
     oldSites: RawCallSite[],
     newSites: RawCallSite[],
     validCounts: Set<number> | { min: number; max: number },
   ): CallSite[] {
-    // Build a frequency map of old argument counts for heuristic matching
     const oldArgCounts = new Map<number, number>();
     for (const old of oldSites) {
       if (!old.hasSpread) {
@@ -378,8 +475,6 @@ export class CallSiteTracer {
 
       let isFixed = false;
       if (isValid && !newSite.hasSpread) {
-        // Check if there was an old call with an INVALID count at this position
-        // that has been "fixed" — heuristic: old had wrong count, new has right count
         const oldInvalidCount = oldSites.find(
           o => !o.hasSpread && !this.isValidArgCount(o.argumentCount, validCounts)
         );
@@ -403,50 +498,38 @@ export class CallSiteTracer {
     return results;
   }
 
-  // ── 5. AST call-site extraction ────────────────────────────────────────────
+  // ── 5. AST call-site extraction (strategy-driven) ──────────────────────────
 
   /**
    * Parses a source string and extracts every call expression that matches
-   * the target identifier.
-   *
-   * Handles:
-   *   - Direct calls:     processPayment(x, y)
-   *   - Method calls:     obj.processPayment(x, y)
-   *   - Namespace calls:  payments.processPayment(x, y)
-   *   - Aliased calls:    handlePayment(x, y)  (when localName = 'handlePayment')
-   *   - Chained calls:    getService().processPayment(x, y)
-   *
-   * For each call, counts:
-   *   - Number of arguments (excluding spread elements for count)
-   *   - Whether any argument uses spread syntax (...args)
+   * the target identifier. Delegates query patterns and argument counting
+   * to the language strategy.
    */
   private extractCallSites(
+    grammar:    GrammarEntry,
+    strategy:   LanguageStrategy,
     source:     string,
     searchName: string,
     filePath:   string,
   ): RawCallSite[] {
-    if (!this.parser || !this.language) return [];
-
     let tree: Tree | null = null;
     const sites: RawCallSite[] = [];
 
     try {
-      tree = this.parser.parse(source);
+      tree = grammar.parser.parse(source);
       if (!tree) return [];
 
-      const queries = getTracerQueries(this.language);
-
-      // Determine what to match based on the search name format
-      // If searchName contains a dot (e.g., 'payments.processPayment'),
-      // it's a namespace import — we need to match differently
+      // Determine the bare identifier to match
       const isDotNotation = searchName.includes('.');
       const bareIdentifier = isDotNotation
         ? searchName.split('.').pop()!
         : searchName;
 
-      // ── Direct calls: identifier(args) ────────────────────────────────
-      if (!isDotNotation) {
-        for (const match of queries.directCall.matches(tree.rootNode)) {
+      // Run each call expression query from the strategy
+      for (const querySrc of strategy.callExpressionQueries) {
+        const query = getQuery(grammar, querySrc);
+
+        for (const match of query.matches(tree.rootNode)) {
           const calleeNode = this.getCapture(match, 'callee');
           const argsNode = this.getCapture(match, 'args');
           const callNode = this.getCapture(match, 'call');
@@ -456,34 +539,24 @@ export class CallSiteTracer {
           // Match by identifier name
           if (calleeNode.text !== bareIdentifier) continue;
 
-          sites.push(this.buildRawCallSite(callNode, argsNode, filePath));
-        }
-      }
-
-      // ── Method calls: expr.identifier(args) ───────────────────────────
-      for (const match of queries.memberCall.matches(tree.rootNode)) {
-        const calleeNode = this.getCapture(match, 'callee');
-        const argsNode = this.getCapture(match, 'args');
-        const callNode = this.getCapture(match, 'call');
-
-        if (!calleeNode || !argsNode || !callNode) continue;
-
-        // Match by property name
-        if (calleeNode.text !== bareIdentifier) continue;
-
-        // For namespace imports (payments.processPayment), verify the object too
-        if (isDotNotation) {
-          const namespaceName = searchName.split('.')[0];
-          const memberExpr = callNode.childForFieldName('function');
-          if (memberExpr) {
-            const objectNode = memberExpr.childForFieldName('object');
-            if (objectNode && objectNode.text !== namespaceName) continue;
+          // Verify the call target using the strategy
+          // (handles namespace imports, static imports, etc.)
+          if (!strategy.verifyCallTarget(callNode, searchName, calleeNode.text)) {
+            continue;
           }
+
+          // Count arguments using the strategy
+          const { count, hasSpread } = strategy.countArguments(argsNode);
+
+          sites.push({
+            filePath,
+            lineStart: callNode.startPosition.row + 1,
+            lineEnd:   callNode.endPosition.row + 1,
+            argumentCount: hasSpread ? -1 : count,
+            hasSpread,
+          });
         }
-
-        sites.push(this.buildRawCallSite(callNode, argsNode, filePath));
       }
-
     } finally {
       tree?.delete();
     }
@@ -491,69 +564,46 @@ export class CallSiteTracer {
     return sites;
   }
 
+  // ── 5b. Enum member access extraction (strategy-driven) ────────────────────
+
   /**
-   * Builds a RawCallSite from a call expression node and its arguments node.
-   * Counts arguments and detects spread elements.
+   * Parses source and finds all EnumName.MemberName access patterns.
+   * Delegates the actual AST walking to the language strategy.
    */
-  private buildRawCallSite(
-    callNode: { startPosition: { row: number }; endPosition: { row: number } },
-    argsNode: { namedChildren: readonly any[] },
-    filePath: string,
-  ): RawCallSite {
-    // Count arguments — named children of the arguments node
-    // Exclude commas and parentheses (only named children matter)
-    let argumentCount = 0;
-    let hasSpread = false;
+  private extractEnumAccess(
+    grammar:    GrammarEntry,
+    strategy:   LanguageStrategy,
+    source:     string,
+    enumName:   string,
+    memberSet:  Set<string>,
+    filePath:   string,
+  ): RawEnumAccess[] {
+    let tree: Tree | null = null;
 
-    for (const child of argsNode.namedChildren) {
-      // Skip non-argument syntax nodes
-      if (child.type === ',' || child.type === '(' || child.type === ')') {
-        continue;
-      }
+    try {
+      tree = grammar.parser.parse(source);
+      if (!tree) return [];
 
-      argumentCount++;
-
-      // Detect spread elements: ...args, ...array, ...getArgs()
-      if (child.type === 'spread_element') {
-        hasSpread = true;
-      }
+      return strategy.walkEnumAccess(tree.rootNode, enumName, memberSet, filePath);
+    } finally {
+      tree?.delete();
     }
-
-    return {
-      filePath,
-      lineStart: callNode.startPosition.row + 1,  // 1-indexed
-      lineEnd:   callNode.endPosition.row + 1,
-      argumentCount: hasSpread ? -1 : argumentCount,
-      hasSpread,
-    };
   }
 
   // ── 6. Argument count validation ───────────────────────────────────────────
 
-  /**
-   * Builds the set of valid argument counts for a function.
-   *
-   * For non-overloaded functions: { min: requiredParamCount, max: totalParamCount }
-   * For overloaded functions: Set of all valid counts from all overloads
-   *
-   * If the function has a rest parameter, max is Infinity.
-   */
   private buildValidArgCounts(
     change: FunctionChange,
   ): Set<number> | { min: number; max: number } {
-    // If overloaded, use the pre-computed valid set
     if (change.validArgCounts && change.validArgCounts.size > 0) {
       return change.validArgCounts;
     }
 
-    // Otherwise, build a range from the signature
     const sig = change.after as FunctionSignature | null;
     if (!sig || !('params' in sig)) {
-      // Not a function or deleted — can't validate
       return { min: 0, max: Infinity };
     }
 
-    // Use pre-computed counts if available
     if (change.requiredParamCount !== undefined && change.totalParamCount !== undefined) {
       const hasRest = sig.params.some(p => p.isRest);
       return {
@@ -562,7 +612,6 @@ export class CallSiteTracer {
       };
     }
 
-    // Compute from signature params
     const required = sig.params.filter(p => !p.optional && !p.isRest).length;
     const total = sig.params.filter(p => !p.isRest).length;
     const hasRest = sig.params.some(p => p.isRest);
@@ -573,17 +622,10 @@ export class CallSiteTracer {
     };
   }
 
-  /**
-   * Checks whether an argument count is valid.
-   * Handles both Set<number> (overloaded) and range (normal) cases.
-   *
-   * Indeterminate (-1) is always considered valid to prevent false positives.
-   */
   private isValidArgCount(
     count: number,
     validCounts: Set<number> | { min: number; max: number },
   ): boolean {
-    // Indeterminate (spread) — always valid
     if (count === -1) return true;
 
     if (validCounts instanceof Set) {
@@ -595,15 +637,10 @@ export class CallSiteTracer {
 
   // ── 7. Classify non-diff call sites ────────────────────────────────────────
 
-  /**
-   * Classifies call sites for files NOT in the PR diff.
-   * These files have only one version (HEAD), so there's no old↔new comparison.
-   * Every call with wrong argument count is simply "broken."
-   */
   private classifyCallSites(
     rawSites:    RawCallSite[],
     validCounts: Set<number> | { min: number; max: number },
-    isInDiff:    boolean,
+    _isInDiff:   boolean,
   ): CallSite[] {
     return rawSites.map(site => ({
       file:            site.filePath,
@@ -619,9 +656,6 @@ export class CallSiteTracer {
 
   // ── 8. File content retrieval ──────────────────────────────────────────────
 
-  /**
-   * Reads file content from the git index at HEAD.
-   */
   private async getFileContent(filePath: string): Promise<string> {
     try {
       const { stdout } = await execAsync(
@@ -642,9 +676,6 @@ export class CallSiteTracer {
 
   // ── 9. Helpers ─────────────────────────────────────────────────────────────
 
-  /**
-   * Gets a named capture from a query match.
-   */
   private getCapture(
     match: { captures: Array<{ name: string; node: any }> },
     name: string,
@@ -656,20 +687,4 @@ export class CallSiteTracer {
   private normalizePath(filePath: string): string {
     return filePath.replace(/\\/g, '/').replace(/\/$/, '').toLowerCase();
   }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Internal types
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Raw call site extracted from the AST — before classification.
- * Not exported — internal to the tracer.
- */
-interface RawCallSite {
-  filePath:      string;
-  lineStart:     number;
-  lineEnd:       number;
-  argumentCount: number;    // -1 if indeterminate (has spread)
-  hasSpread:     boolean;
 }
