@@ -104,8 +104,12 @@ export const TerminalReporter: Reporter = {
         console.log(chalk.red('Breaking changes found. Exiting with code 1.'));
         console.log();
         console.log(
-          chalk.white.bold('  ► If this is an intentional breaking release, bypass with:') +
-          chalk.cyan.bold('  git push --no-verify')
+          chalk.white.bold('  ► To bypass this strict check, append ') +
+          chalk.cyan.bold('--no-verify') +
+          chalk.white.bold(' to your git command.')
+        );
+        console.log(
+          chalk.dim('    (e.g., git push --set-upstream origin HEAD --no-verify)')
         );
         console.log(
           chalk.dim('    Document this change in your CHANGELOG before merging.')
