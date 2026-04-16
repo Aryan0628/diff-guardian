@@ -95,6 +95,7 @@ export const rustStrategy: LanguageStrategy = {
       },
 
       // ── use glob: use crate::payments::*; ─────────────────────────────
+      // verifyMatch: confirms the symbol appears as a word in the file
       {
         regex: new RegExp(
           `use\\s+[\\w:]+::\\*\\s*;`,
@@ -102,13 +103,12 @@ export const rustStrategy: LanguageStrategy = {
         ),
         type: 'use_glob' as any,
         extractAlias: (_match, sym) => sym,
+        verifyMatch: (_match, content, sym, _localName) => {
+          return new RegExp(`\\b${escapeRegex(sym)}\\b`).test(content);
+        },
       },
 
       // ── use group (single-line only): use path::{sym, other}; ─────────
-      // Gotcha 1: Multi-line groups are NOT matched by this regex.
-      // The grep phase already found the file. If neither the single-line
-      // use regex nor the direct use regex matches, the file still enters
-      // the tracer queue (defensive: grep confirmed the symbol exists).
       {
         regex: new RegExp(
           `use\\s+[\\w:]+::\\{[^}]*\\b${escaped}\\b[^}]*\\}\\s*;`,
@@ -126,6 +126,24 @@ export const rustStrategy: LanguageStrategy = {
             if (aliasMatch) return aliasMatch[1];
           }
           return sym;
+        },
+      },
+
+      // ── Fallback: multi-line use group (Gotcha 1 fix) ─────────────────
+      // rustfmt wraps use groups across lines. The regex above can't match
+      // multi-line blocks. This fallback catches: any line containing `use`
+      // followed by `{` (opening a group). verifyMatch then confirms the
+      // symbol actually appears as a word in the file.
+      // This is intentionally broad — the tracer (Phase 3) AST-verifies.
+      {
+        regex: new RegExp(
+          `use\\s+[\\w:]+::\\{`,
+          'gm'
+        ),
+        type: 'use_group' as any,
+        extractAlias: (_match, sym) => sym,
+        verifyMatch: (_match, content, sym, _localName) => {
+          return new RegExp(`\\b${escapeRegex(sym)}\\b`).test(content);
         },
       },
     ];

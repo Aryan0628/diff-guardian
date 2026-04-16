@@ -118,27 +118,30 @@ export const typescriptStrategy: LanguageStrategy = {
         extractAlias: (match, sym) => extractAliasFromSpecifiers(match[1], sym),
       },
 
-      // ── Dynamic import: import('./mod') ───────────────────────────────
+      // ── Dynamic import: const { fn } = await import('./mod') ─────────
+      // Must destructure the symbol name — bare import() is NOT a match
       {
         regex: new RegExp(
-          `(?:import\\s*\\(\\s*['"]([^'"]+)['"]\\s*\\))`,
+          `\\{([^}]*\\b${escaped}\\b[^}]*)\\}\\s*=\\s*(?:await\\s+)?import\\s*\\(\\s*['"]([^'"]+)['"]\\s*\\)`,
           'gm'
         ),
         type: 'dynamic' as const,
-        extractAlias: (_match, sym) => sym,
+        extractAlias: (match, sym) => extractAliasFromSpecifiers(match[1], sym),
       },
 
-      // ── CJS require: require('./mod') ─────────────────────────────────
+      // ── CJS require: const { fn } = require('./mod') ──────────────────
+      // Must destructure the symbol name — bare require() is NOT a match
       {
         regex: new RegExp(
-          `require\\s*\\(\\s*['"]([^'"]+)['"]\\s*\\)`,
+          `\\{([^}]*\\b${escaped}\\b[^}]*)\\}\\s*=\\s*require\\s*\\(\\s*['"]([^'"]+)['"]\\s*\\)`,
           'gm'
         ),
         type: 'require' as const,
-        extractAlias: (_match, sym) => sym,
+        extractAlias: (match, sym) => extractAliasFromSpecifiers(match[1], sym),
       },
 
       // ── Wildcard import: import * as mod from './mod' ─────────────────
+      // verifyMatch confirms mod.symbolName actually appears in the file
       {
         regex: new RegExp(
           `import\\s*\\*\\s*as\\s+(\\w+)\\s*from\\s*['"]([^'"]+)['"]`,
@@ -146,6 +149,7 @@ export const typescriptStrategy: LanguageStrategy = {
         ),
         type: 'wildcard' as const,
         extractAlias: (match, sym) => `${match[1]}.${sym}`,
+        verifyMatch: (_match, content, _sym, localName) => content.includes(localName),
       },
     ];
   },
@@ -270,11 +274,11 @@ export const typescriptStrategy: LanguageStrategy = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function walkMemberExpression(
-  node:      any,
-  enumName:  string,
+  node: any,
+  enumName: string,
   memberSet: Set<string>,
-  filePath:  string,
-  accesses:  RawEnumAccess[],
+  filePath: string,
+  accesses: RawEnumAccess[],
 ): void {
   if (node.type === 'member_expression') {
     const objectNode = node.childForFieldName('object');
@@ -284,8 +288,8 @@ function walkMemberExpression(
       if (objectNode.text === enumName && memberSet.has(propertyNode.text)) {
         accesses.push({
           filePath,
-          lineStart:  node.startPosition.row + 1,
-          lineEnd:    node.endPosition.row + 1,
+          lineStart: node.startPosition.row + 1,
+          lineEnd: node.endPosition.row + 1,
           memberName: propertyNode.text,
         });
       }

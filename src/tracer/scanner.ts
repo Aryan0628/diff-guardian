@@ -209,8 +209,8 @@ export class JITScanner {
         // Check if this looks like a path or a ref
         const potentialRef = refMatch[0].slice(0, -1);
         if (potentialRef === this.config.headSha ||
-            potentialRef === 'HEAD' ||
-            /^[a-f0-9]{7,40}$/.test(potentialRef)) {
+          potentialRef === 'HEAD' ||
+          /^[a-f0-9]{7,40}$/.test(potentialRef)) {
           rest = rest.slice(refMatch[0].length);
         }
       }
@@ -302,6 +302,12 @@ export class JITScanner {
 
       while ((match = pattern.regex.exec(content)) !== null) {
         const localName = pattern.extractAlias(match, symbolName);
+
+        // Optional secondary verification — reject false positives
+        if (pattern.verifyMatch && !pattern.verifyMatch(match, content, symbolName, localName)) {
+          continue;
+        }
+
         const lineNum = this.getLineNumber(content, match.index);
 
         importers.push({
@@ -445,8 +451,8 @@ export class JITScanner {
     } catch (error: any) {
       const stderr: string = error.stderr ?? '';
       if (stderr.includes('does not exist in') ||
-          stderr.includes('Path') ||
-          error.code === 128) {
+        stderr.includes('Path') ||
+        error.code === 128) {
         return '';
       }
       throw error;
@@ -508,9 +514,9 @@ export function createDefaultTracerConfig(
 ): TracerConfig {
   return {
     tracerLanguages: ['typescript', 'javascript'],
-    maxGrepResults:   500,
-    maxBarrelDepth:   10,
-    maxTracerFiles:   100,
+    maxGrepResults: 500,
+    maxBarrelDepth: 10,
+    maxTracerFiles: 100,
     traceOnlyBreaking: true,
     repoRoot,
     headSha,

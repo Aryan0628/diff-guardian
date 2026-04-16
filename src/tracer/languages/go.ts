@@ -84,7 +84,7 @@ export const goStrategy: LanguageStrategy = {
     return [
       // ── Standard import: "payments" (in import block or standalone) ────
       // Matches the last path segment as the package name.
-      // Note: The grep phase already confirmed the symbol exists in the file.
+      // verifyMatch: confirms payments.SymbolName actually appears in file
       {
         regex: new RegExp(
           `import\\s+"([^"]*)"`,
@@ -92,14 +92,15 @@ export const goStrategy: LanguageStrategy = {
         ),
         type: 'go_import' as any,
         extractAlias: (match, sym) => {
-          // Package alias is the last path segment
           const pkgPath = match[1];
           const pkgName = pkgPath.split('/').pop() || pkgPath;
           return `${pkgName}.${sym}`;
         },
+        verifyMatch: (_match, content, _sym, localName) => content.includes(localName),
       },
 
       // ── Aliased import: alias "path" ──────────────────────────────────
+      // verifyMatch: confirms alias.SymbolName actually appears in file
       {
         regex: new RegExp(
           `(\\w+)\\s+"([^"]*)"`,
@@ -107,9 +108,11 @@ export const goStrategy: LanguageStrategy = {
         ),
         type: 'go_import' as any,
         extractAlias: (match, sym) => `${match[1]}.${sym}`,
+        verifyMatch: (_match, content, _sym, localName) => content.includes(localName),
       },
 
       // ── Dot import: . "path" → bare identifier ────────────────────────
+      // verifyMatch: confirms the symbol appears as a word in the file body
       {
         regex: new RegExp(
           `\\.\\s+"([^"]*)"`,
@@ -117,6 +120,10 @@ export const goStrategy: LanguageStrategy = {
         ),
         type: 'dot_import' as any,
         extractAlias: (_match, sym) => sym,
+        verifyMatch: (match, content, sym, _localName) => {
+          const afterImport = content.slice(match.index + match[0].length);
+          return new RegExp(`\\b${escapeRegex(sym)}\\b`).test(afterImport);
+        },
       },
     ];
   },

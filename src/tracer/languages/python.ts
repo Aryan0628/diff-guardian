@@ -106,6 +106,7 @@ export const pythonStrategy: LanguageStrategy = {
       // ── import X (module import) ──────────────────────────────────────
       // import payments → usage: payments.process_payment()
       // Gotcha 3: composite localName for tracer verification
+      // verifyMatch: confirms payments.process_payment actually appears in file
       {
         regex: new RegExp(
           `^import\\s+(\\w+)\\s*$`,
@@ -113,9 +114,12 @@ export const pythonStrategy: LanguageStrategy = {
         ),
         type: 'module_import' as any,
         extractAlias: (match, sym) => `${match[1]}.${sym}`,
+        verifyMatch: (_match, content, _sym, localName) => content.includes(localName),
       },
 
       // ── from X import * (wildcard) ────────────────────────────────────
+      // verifyMatch: confirms the symbol name appears as a word in the file
+      // (beyond just the import line itself)
       {
         regex: new RegExp(
           `from\\s+\\S+\\s+import\\s+\\*`,
@@ -123,6 +127,11 @@ export const pythonStrategy: LanguageStrategy = {
         ),
         type: 'wildcard' as any,
         extractAlias: (_match, sym) => sym,
+        verifyMatch: (match, content, sym, _localName) => {
+          // Check that the symbol appears somewhere AFTER the import line
+          const afterImport = content.slice(match.index + match[0].length);
+          return new RegExp(`\\b${escapeRegex(sym)}\\b`).test(afterImport);
+        },
       },
     ];
   },

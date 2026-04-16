@@ -31,11 +31,11 @@ import type { Language, ImportReference } from '../../core/types';
  * Used by the tracer to collect all call expressions matching a target symbol.
  */
 export interface RawCallSite {
-  filePath:      string;
-  lineStart:     number;
-  lineEnd:       number;
+  filePath: string;
+  lineStart: number;
+  lineEnd: number;
   argumentCount: number;    // -1 if indeterminate (has spread/splat)
-  hasSpread:     boolean;
+  hasSpread: boolean;
 }
 
 /**
@@ -43,9 +43,9 @@ export interface RawCallSite {
  * Used by the tracer to collect all EnumName.Member (or EnumName::Member) accesses.
  */
 export interface RawEnumAccess {
-  filePath:   string;
-  lineStart:  number;
-  lineEnd:    number;
+  filePath: string;
+  lineStart: number;
+  lineEnd: number;
   memberName: string;       // the accessed member: 'Active'
 }
 
@@ -80,6 +80,13 @@ export interface ImportPattern {
    * The file will be added to the BFS barrel queue instead of the tracer queue.
    */
   isBarrel?: boolean;
+
+  /**
+   * Optional secondary verification. If provided, a regex match is only
+   * accepted as valid when this returns true. Used to eliminate false positives
+   * from patterns that don't embed the symbol name (e.g., wildcard imports).
+   */
+  verifyMatch?: (match: RegExpExecArray, content: string, symbolName: string, localName: string) => boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -192,7 +199,7 @@ export interface LanguageStrategy {
    * @returns true if this call is a genuine match
    */
   verifyCallTarget(
-    callNode:   any,
+    callNode: any,
     searchName: string,
     calleeText: string,
   ): boolean;
@@ -220,9 +227,9 @@ export interface LanguageStrategy {
    * @param filePath   — for populating RawEnumAccess.filePath
    */
   walkEnumAccess(
-    rootNode:  any,
-    enumName:  string,
+    rootNode: any,
+    enumName: string,
     memberSet: Set<string>,
-    filePath:  string,
+    filePath: string,
   ): RawEnumAccess[];
 }
