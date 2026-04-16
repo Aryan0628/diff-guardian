@@ -170,13 +170,33 @@ export interface TypeAliasSignature {
 }
 
 // ── CallSite ──────────────────────────────────────────────────────────────────
-// Produced by the tracer for each caller of a changed function.
+// Produced by the JIT tracer for each caller of a changed function.
+// Merges reporter needs (lineEnd, covered) with tracer needs (argumentCount, isBroken).
+//
+// Lifecycle:
+//   1. Scanner (Phase 2) finds importer files
+//   2. Tracer  (Phase 3) parses each file and produces one CallSite per call expression
+//   3. Reporter (Phase 4) renders each CallSite with line-level precision
 
 export interface CallSite {
-  file:      string;   // 'src/checkout/index.ts'
-  lineStart: number;   // 1-indexed start line of the call
-  lineEnd:   number;   // end line — needed for multi-line call highlighting in PR comments
-  covered:   boolean;  // true if a test file references this caller
+  file:             string;    // 'src/checkout/index.ts'
+  lineStart:        number;    // 1-indexed start line of the call expression
+  lineEnd:          number;    // end line — needed for multi-line call highlighting in PR comments
+
+  // ── Tracer fields ─────────────────────────────────────────────────────────
+  argumentCount:    number;    // actual number of arguments at this call site
+                               // -1 = indeterminate (contains spread element)
+  isBroken:         boolean;   // true if argumentCount does not match required range
+  isFixed:          boolean;   // true if this call was broken in oldSource but
+                               // the developer updated it correctly in newSource
+  isIndeterminate:  boolean;   // true if call uses spread args (...args)
+                               // indeterminate calls are never marked as broken
+                               // to prevent false positives — the developer may
+                               // be correctly spreading the right number of args
+
+  // ── Test coverage ─────────────────────────────────────────────────────────
+  covered:          boolean;   // true if a test file references this caller
+                               // used by testGaps detection in AnalysisResult
 }
 
 // ── FunctionChange ────────────────────────────────────────────────────────────
@@ -214,6 +234,17 @@ export interface FunctionChange {
   severity:   Severity;     // breaking | warning | safe — reporter bucketing
   message?:   string;       // reason for the violation reported by the classifier rule
   callers:    CallSite[];   // populated by tracer (empty array after classifier)
+
+  // ── Tracer metadata ───────────────────────────────────────────────────────
+  // Populated by the pipeline after classification, consumed by the tracer.
+  // Only meaningful when symbolType === 'function'.
+  requiredParamCount?: number;  // minimum args the new signature requires
+                                // = params.filter(p => !p.optional && !p.isRest).length
+  totalParamCount?:    number;  // maximum args (including optional, excluding rest)
+                                // = params.filter(p => !p.isRest).length
+  validArgCounts?:     Set<number>;  // for overloaded functions: the set of valid
+                                     // argument counts across ALL overload signatures
+                                     // undefined = not overloaded, use requiredParamCount..totalParamCount range
 }
 
 // ── RiskFile ──────────────────────────────────────────────────────────────────
@@ -272,4 +303,71 @@ export interface ParseResult {
   newSigs:     Map<string, AnySignature>;
   skipped:     boolean;
   skipReason?: string;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TRACER DOMAIN TYPES
+// These interfaces define the data contract between the JIT Scanner (Phase 2)
+// and the Call-Site Tracer (Phase 3).
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── ImportReference ──────────────────────────────────────────────────────────
+// Represents a single import of a target symbol found by the scanner.
+// Tracks aliases so the tracer knows which identifier to search for.
+
+export interface ImportReference {
+  filePath:     string;    // absolute or repo-relative path of the importing file
+  importedName: string;    // original exported name: 'processPayment'
+  localName:    string;    // local binding: 'handlePayment' (or same as importedName if no alias)
+  isBarrel:     boolean;   // true if this file just re-exports the symbol
+                           // barrel files are added to the scanner queue, not the tracer queue
+  importLine:   number;    // 1-indexed line of the import statement
+  importType:   'static'   // import { x } from './mod'
+              | 'dynamic'  // const { x } = await import('./mod')
+              | 'require'  // const { x } = require('./mod')
+              | 'wildcard'; // import * as mod from './mod' — localName = 'mod.processPayment'
+}
+
+// ── GrepMatch ────────────────────────────────────────────────────────────────
+// Raw output from the git grep phase. One per file that contains the symbol name.
+// Lightweight — no AST parsing yet.
+
+export interface GrepMatch {
+  filePath:   string;     // 'src/checkout/cart.ts'
+  matchLine:  number;     // line number of the grep hit (approximate — for debugging only)
+  matchText:  string;     // the matched line text (for debugging)
+}
+
+// ── TracerResult ─────────────────────────────────────────────────────────────
+// Complete output of the tracer for one FunctionChange.
+// Contains all resolved call sites and metadata about the scan.
+
+export interface TracerResult {
+  functionName:    string;        // 'processPayment'
+  totalFilesGrepped: number;      // how many files the grep phase scanned
+  importersFound:  number;        // how many files actually import the symbol
+  barrelsTraversed: number;       // how many barrel files were walked
+  callSites:       CallSite[];    // all resolved call sites across all importer files
+  errors:          string[];      // non-fatal errors encountered during tracing
+}
+
+// ── TracerConfig ─────────────────────────────────────────────────────────────
+// Configuration for the JIT tracer. Controls which languages are traced,
+// performance limits, and behavior flags.
+
+export interface TracerConfig {
+  // Language scoping — v1 only supports TS/JS.
+  // Other languages have fundamentally different module systems.
+  tracerLanguages:  Language[];   // default: ['typescript', 'javascript']
+
+  // Performance limits — prevents runaway scans on massive repos
+  maxGrepResults:   number;       // max files returned by grep (default: 500)
+  maxBarrelDepth:   number;       // max recursive barrel file depth (default: 10)
+  maxTracerFiles:   number;       // max files to AST-parse in Phase 3 (default: 100)
+
+  // Behavior
+  traceOnlyBreaking: boolean;     // if true, only trace breaking changes (default: true)
+                                  // if false, also trace warnings for completeness
+  repoRoot:         string;       // absolute path to repo root
+  headSha:          string;       // git ref for committed content (used by git grep)
 }
