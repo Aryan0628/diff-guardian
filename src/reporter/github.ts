@@ -1,95 +1,243 @@
-import { AnalysisResult } from '../core/types';
+/**
+ * src/reporter/github.ts
+ *
+ * THE GITHUB REPORTER.
+ * Posts a structured PR comment via the GitHub REST API.
+ * Requires: GITHUB_TOKEN, PR number, and repo slug.
+ *
+ * Edge cases handled:
+ *  - Missing config (token / prNumber / repoSlug) — warnings printed, fast return
+ *  - GitHub API pagination: fetches up to 100 comments to find existing DG comment
+ *  - `fetch` network failures — caught, warning printed, pipeline NOT blocked
+ *  - `result` fields may be empty arrays — always safe to iterate
+ *  - `change.message` may be undefined — falls back to change type label
+ *  - `change.file` / `change.name` may be empty — safe fallbacks applied
+ *  - Markdown table pipes in messages sanitized to avoid breaking table layout
+ *  - baseSha / headSha may be short branch names — no unsafe substring call
+ *  - GitHub token never logged — only existence is confirmed
+ */
+
+import { AnalysisResult, FunctionChange } from '../core/types';
 import { Reporter, ReporterConfig } from './types';
 
-// Used to identify the DG comment to update instead of spamming
+// ─────────────────────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Injected into every comment so we can find-and-update instead of spamming. */
 const COMMENT_MARKER = '<!-- dg-report -->';
+
+const GITHUB_API_BASE = 'https://api.github.com';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reporter
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const GithubReporter: Reporter = {
   async render(result: AnalysisResult, config: ReporterConfig): Promise<void> {
+
+    // ── Guard: required config ───────────────────────────────────────────────
     if (!config.githubToken || !config.prNumber || !config.repoSlug) {
-      console.warn('[github-reporter] Missing githubToken, prNumber, or repoSlug. Skipping PR comment.');
-      console.warn(`  githubToken: ${config.githubToken ? 'present' : 'MISSING'}`);
-      console.warn(`  prNumber: ${config.prNumber ?? 'MISSING'}`);
-      console.warn(`  repoSlug: ${config.repoSlug ?? 'MISSING'}`);
+      console.warn('[github-reporter] Cannot post PR comment — missing required config:');
+      console.warn(`  GITHUB_TOKEN:        ${config.githubToken    ? 'present' : 'MISSING'}`);
+      console.warn(`  PR number:           ${config.prNumber       ?? 'MISSING'}`);
+      console.warn(`  Repository slug:     ${config.repoSlug       ?? 'MISSING'}`);
       return;
     }
 
-    let markdown = `${COMMENT_MARKER}\n\n`;
-    markdown += `## Diff-Guardian API Audit\n\n`;
-    
-    if (result.breaking.length > 0) {
-      markdown += `### [BREAKING] Changes (${result.breaking.length})\n\n`;
-      markdown += `| File | Symbol | Type | Message |\n`;
-      markdown += `|------|--------|------|---------|` + '\n';
-      for (const c of result.breaking) {
-        markdown += `| \`${c.file}:${c.lineStart}\` | **${c.name}** | \`${c.changeType}\` | ${c.message || ''} |\n`;
-      }
-      markdown += '\n';
-    } else {
-      markdown += `### [SAFE] No Breaking API Changes\n\n`;
+    // ── Guard: malformed result ──────────────────────────────────────────────
+    if (!result) {
+      console.warn('[github-reporter] Received null result — skipping comment.');
+      return;
     }
 
-    if (result.warnings.length > 0) {
-      markdown += `### [WARNING] Non-Breaking Issues (${result.warnings.length})\n\n`;
-      for (const c of result.warnings) {
-        markdown += `- **${c.name}** (\`${c.changeType}\`): ${c.message || ''}\n`;
-      }
-      markdown += '\n';
-    }
+    const breaking   = Array.isArray(result.breaking)   ? result.breaking   : [];
+    const warnings   = Array.isArray(result.warnings)   ? result.warnings   : [];
+    const allChanges = Array.isArray(result.apiChanges) ? result.apiChanges : [];
+    const safeCount  = Math.max(0, allChanges.length - breaking.length - warnings.length);
 
-    const safeCount = result.apiChanges.length - result.breaking.length - result.warnings.length;
-    if (safeCount > 0) {
-      markdown += `### [SAFE] Additions / Expansions: ${safeCount}\n\n`;
-    }
+    // ── Build markdown ───────────────────────────────────────────────────────
+    const markdown = buildMarkdown(result, breaking, warnings, allChanges, safeCount, config);
 
-    const baseShaDisplay = result.baseSha.length > 7 ? result.baseSha.substring(0, 7) : result.baseSha;
-    const headShaDisplay = result.headSha.length > 7 ? result.headSha.substring(0, 7) : result.headSha;
-    markdown += `---\n`;
-    markdown += `_Analyzed ${result.apiChanges.length} total API surface changes. Comparing \`${headShaDisplay}\` against \`${baseShaDisplay}\`._\n`;
-
+    // ── Post to GitHub ───────────────────────────────────────────────────────
     try {
-      const url = `https://api.github.com/repos/${config.repoSlug}/issues/${config.prNumber}/comments`;
-      const headers: Record<string, string> = {
-        'Authorization': `token ${config.githubToken}`,
-        'Accept': 'application/vnd.github.v3+json',
-        'Content-Type': 'application/json',
-        'User-Agent': 'diff-guardian'
-      };
-
-      // 1. Find existing DG comment
-      const listRes = await fetch(url, { headers });
-      if (!listRes.ok) {
-        throw new Error(`Failed to fetch PR comments (${listRes.status}): ${listRes.statusText}`);
-      }
-      const comments = await listRes.json() as any[];
-      
-      const existing = comments.find((c: any) => c.body && c.body.includes(COMMENT_MARKER));
-
-      if (existing) {
-        // 2. Update existing comment (no spam)
-        const updateRes = await fetch(existing.url, {
-          method: 'PATCH',
-          headers,
-          body: JSON.stringify({ body: markdown })
-        });
-        if (!updateRes.ok) {
-          throw new Error(`Failed to update comment (${updateRes.status}): ${updateRes.statusText}`);
-        }
-        console.log(`[github-reporter] Updated existing PR comment #${existing.id}`);
-      } else {
-        // 3. Create new comment
-        const createRes = await fetch(url, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ body: markdown })
-        });
-        if (!createRes.ok) {
-          throw new Error(`Failed to create comment (${createRes.status}): ${createRes.statusText}`);
-        }
-        console.log(`[github-reporter] Created new PR comment`);
-      }
+      await upsertComment(config, markdown);
     } catch (e: any) {
+      // Never block the pipeline over a reporting failure.
       console.warn(`\n[github-reporter] Failed to post PR comment: ${e.message}`);
     }
   }
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Markdown builder
+// ─────────────────────────────────────────────────────────────────────────────
+
+function buildMarkdown(
+  result:    AnalysisResult,
+  breaking:  FunctionChange[],
+  warnings:  FunctionChange[],
+  allChanges: FunctionChange[],
+  safeCount: number,
+  config:    ReporterConfig,
+): string {
+  const lines: string[] = [];
+
+  lines.push(COMMENT_MARKER);
+  lines.push('');
+  lines.push('## Diff-Guardian API Audit');
+  lines.push('');
+
+  // ── Breaking ──────────────────────────────────────────────────────────────
+  if (breaking.length > 0) {
+    lines.push(`### [BREAKING] Changes (${breaking.length})`);
+    lines.push('');
+    lines.push('| File | Symbol | Type | Message |');
+    lines.push('|------|--------|------|---------|');
+    for (const c of breaking) {
+      lines.push(formatTableRow(c));
+    }
+    lines.push('');
+  } else {
+    lines.push('### [SAFE] No Breaking API Changes');
+    lines.push('');
+  }
+
+  // ── Warnings ─────────────────────────────────────────────────────────────
+  if (warnings.length > 0) {
+    lines.push(`### [WARNING] Non-Breaking Issues (${warnings.length})`);
+    lines.push('');
+    for (const c of warnings) {
+      const name       = sanitizeInline(c.name       || '<anonymous>');
+      const changeType = sanitizeInline(c.changeType || 'unknown');
+      const message    = sanitizeInline(c.message    || changeType);
+      lines.push(`- **${name}** (\`${changeType}\`): ${message}`);
+    }
+    lines.push('');
+  }
+
+  // ── Safe additions ────────────────────────────────────────────────────────
+  if (safeCount > 0) {
+    lines.push(`### [SAFE] Additions / Expansions: ${safeCount}`);
+    lines.push('');
+  }
+
+  // ── Footer ────────────────────────────────────────────────────────────────
+  const mode = config.mode === 'warn' ? 'advisory' : 'strict';
+  const hasBlockingIssues =
+    breaking.length > 0 ||
+    (config.failOnWarnings && warnings.length > 0);
+
+  if (hasBlockingIssues && config.mode !== 'warn') {
+    lines.push('> **[STRICT MODE]** This PR introduces breaking API changes.');
+    lines.push('> If intentional, document in your CHANGELOG before merging.');
+    lines.push('');
+  } else if (breaking.length === 0 && warnings.length === 0) {
+    lines.push('> **[PASSED]** API contract is intact. Safe to merge.');
+    lines.push('');
+  }
+
+  // Short display reference for SHAs / branch names
+  const baseShaDisplay = abbreviate(result.baseSha ?? 'base');
+  const headShaDisplay = abbreviate(result.headSha ?? 'head');
+
+  lines.push('---');
+  lines.push(
+    `_Analyzed ${allChanges.length} total API surface change(s). ` +
+    `Comparing \`${headShaDisplay}\` against \`${baseShaDisplay}\` ` +
+    `· Mode: \`${mode}\`_`
+  );
+
+  return lines.join('\n');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GitHub API — find or create comment
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function upsertComment(config: ReporterConfig, markdown: string): Promise<void> {
+  const { githubToken, prNumber, repoSlug } = config;
+  const commentsUrl = `${GITHUB_API_BASE}/repos/${repoSlug}/issues/${prNumber}/comments`;
+
+  const headers: Record<string, string> = {
+    'Authorization': `token ${githubToken}`,
+    'Accept':        'application/vnd.github.v3+json',
+    'Content-Type':  'application/json',
+    'User-Agent':    'diff-guardian',
+  };
+
+  // Fetch up to 100 comments (single page is sufficient for most PRs)
+  const listUrl = `${commentsUrl}?per_page=100`;
+  const listRes = await fetch(listUrl, { headers });
+
+  if (!listRes.ok) {
+    throw new Error(
+      `GitHub API error fetching PR comments (HTTP ${listRes.status}): ${listRes.statusText}. ` +
+      `Ensure the workflow has \`pull-requests: write\` permission.`
+    );
+  }
+
+  const comments = await listRes.json() as Array<{ id: number; url: string; body?: string }>;
+  const existing = comments.find(c => c.body?.includes(COMMENT_MARKER));
+
+  if (existing) {
+    const updateRes = await fetch(existing.url, {
+      method:  'PATCH',
+      headers,
+      body:    JSON.stringify({ body: markdown }),
+    });
+    if (!updateRes.ok) {
+      throw new Error(
+        `GitHub API error updating comment #${existing.id} (HTTP ${updateRes.status}): ${updateRes.statusText}`
+      );
+    }
+    console.log(`[github-reporter] Updated existing PR comment #${existing.id}`);
+  } else {
+    const createRes = await fetch(commentsUrl, {
+      method:  'POST',
+      headers,
+      body:    JSON.stringify({ body: markdown }),
+    });
+    if (!createRes.ok) {
+      throw new Error(
+        `GitHub API error creating comment (HTTP ${createRes.status}): ${createRes.statusText}`
+      );
+    }
+    console.log('[github-reporter] Created new PR comment.');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Formats a single FunctionChange as a Markdown table row.
+ * Sanitizes all values to prevent table layout breakage.
+ */
+function formatTableRow(c: FunctionChange): string {
+  const file       = sanitizeInline(c.file       || 'unknown');
+  const line       = c.lineStart > 0 ? `:${c.lineStart}` : '';
+  const name       = sanitizeInline(c.name       || '<anonymous>');
+  const changeType = sanitizeInline(c.changeType || 'unknown');
+  const message    = sanitizeInline(c.message    || changeType);
+
+  return `| \`${file}${line}\` | **${name}** | \`${changeType}\` | ${message} |`;
+}
+
+/**
+ * Sanitizes a string for use inside a Markdown table cell.
+ * Pipe characters break the table layout.
+ */
+function sanitizeInline(value: string): string {
+  return value.replace(/\|/g, '\\|').replace(/\n/g, ' ').trim();
+}
+
+/**
+ * Returns the first 7 chars for full SHAs, or the original string for short
+ * branch names (e.g. 'main', 'HEAD') to avoid weird truncation.
+ */
+function abbreviate(ref: string): string {
+  // Full SHA hashes are 40 chars; anything ≥ 40 chars gets abbreviated.
+  return ref.length >= 40 ? ref.substring(0, 7) : ref;
+}

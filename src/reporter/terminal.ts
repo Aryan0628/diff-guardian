@@ -1,66 +1,183 @@
+/**
+ * src/reporter/terminal.ts
+ *
+ * THE TERMINAL REPORTER.
+ * Renders the full pipeline result to stdout for local CLI and pre-push hook usage.
+ *
+ * Edge cases handled:
+ *  - null / undefined `result` fields (defensive access throughout)
+ *  - `change.message` may be undefined — falls back to change type label
+ *  - `change.file` may be an empty string — falls back to 'unknown file'
+ *  - `change.lineStart` may be 0 or undefined — omitted in that case
+ *  - `change.name` may be empty — falls back to '<anonymous>'
+ *  - safeCount can never go below 0 (clamped)
+ *  - `failOnWarnings` mode: warnings are printed before the breaking footer
+ *  - Quiet mode: suppresses all output
+ *  - No chalk if NO_COLOR / CI=true env var is set (chalk respects this natively)
+ */
+
 import chalk from 'chalk';
 import { AnalysisResult, FunctionChange } from '../core/types';
 import { Reporter, ReporterConfig } from './types';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DIVIDER = chalk.dim('─'.repeat(60));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reporter
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const TerminalReporter: Reporter = {
   async render(result: AnalysisResult, config: ReporterConfig): Promise<void> {
+    // ── Guard: quiet mode ────────────────────────────────────────────────────
     if (config.quiet) return;
 
+    // ── Guard: malformed result ──────────────────────────────────────────────
+    if (!result) {
+      console.error(chalk.red('[terminal-reporter] Received null result — pipeline error upstream.'));
+      return;
+    }
+
+    const breaking  = Array.isArray(result.breaking)  ? result.breaking  : [];
+    const warnings  = Array.isArray(result.warnings)  ? result.warnings  : [];
+    const allChanges = Array.isArray(result.apiChanges) ? result.apiChanges : [];
+
+    const safeCount = Math.max(0, allChanges.length - breaking.length - warnings.length);
+    const baseSha   = result.baseSha ?? 'unknown';
+    const headSha   = result.headSha ?? 'HEAD';
+
+    // ── Header ───────────────────────────────────────────────────────────────
     console.log('\n' + chalk.bold.blue('Diff-Guardian API Analysis'));
-    console.log(chalk.dim(`Base: ${result.baseSha} → Head: ${result.headSha}`));
+    console.log(chalk.dim(`Base: ${baseSha} → Head: ${headSha}`));
+    console.log(DIVIDER);
     console.log();
 
-    if (result.breaking.length > 0) {
-      console.log(chalk.bold.red(`[BREAKING] Changes (${result.breaking.length})`));
-      for (const change of result.breaking) {
+    // ── Breaking changes ─────────────────────────────────────────────────────
+    if (breaking.length > 0) {
+      console.log(chalk.bold.red(`[BREAKING] Changes (${breaking.length})`));
+      for (const change of breaking) {
         printChange(change, 'red');
       }
       console.log();
     }
 
-    if (result.warnings.length > 0) {
-      console.log(chalk.bold.yellow(`[WARNING] Non-Breaking Issues (${result.warnings.length})`));
-      for (const change of result.warnings) {
+    // ── Warnings ─────────────────────────────────────────────────────────────
+    if (warnings.length > 0) {
+      console.log(chalk.bold.yellow(`[WARNING] Non-Breaking Issues (${warnings.length})`));
+      for (const change of warnings) {
         printChange(change, 'yellow');
       }
       console.log();
     }
 
-    const safeCount = result.apiChanges.length - result.breaking.length - result.warnings.length;
+    // ── Safe additions ───────────────────────────────────────────────────────
     if (safeCount > 0) {
       console.log(chalk.bold.green(`[SAFE] Additions / Expansions (${safeCount})`));
       console.log(chalk.dim('   Identified harmless API expansions.'));
       console.log();
     }
 
-    if (result.breaking.length === 0 && result.warnings.length === 0 && safeCount === 0) {
-      console.log(chalk.green('No API surface changes detected.'));
+    // ── Zero changes ─────────────────────────────────────────────────────────
+    if (breaking.length === 0 && warnings.length === 0 && safeCount === 0) {
+      console.log(chalk.green('No API surface changes detected. All clear.'));
       console.log();
     }
 
-    // Footer
-    if (result.breaking.length > 0) {
+    // ── Footer ───────────────────────────────────────────────────────────────
+    console.log(DIVIDER);
+
+    const hasBlockingIssues =
+      breaking.length > 0 ||
+      (config.failOnWarnings && warnings.length > 0);
+
+    if (hasBlockingIssues) {
       if (config.mode === 'warn') {
+        // Advisory mode — never blocks.
         console.log(chalk.bgYellow.black.bold(' [ADVISORY MODE] '));
-        console.log(chalk.yellow('Breaking changes found, but exiting with code 0.'));
+        console.log(chalk.yellow('Breaking changes found, but pipeline is set to advisory mode (exit 0).'));
       } else {
+        // Strict mode — blocks push.
         console.log(chalk.bgRed.white.bold(' [STRICT MODE] '));
         console.log(chalk.red('Breaking changes found. Exiting with code 1.'));
-        console.log(chalk.yellow('\nIf this breaking change is intentional, use the native bypass: `git push --no-verify`'));
+        console.log();
+        console.log(
+          chalk.white.bold('  ► If this is an intentional breaking release, bypass with:') +
+          chalk.cyan.bold('  git push --no-verify')
+        );
+        console.log(
+          chalk.dim('    Document this change in your CHANGELOG before merging.')
+        );
       }
+    } else if (warnings.length > 0) {
+      // Warnings only, not failing
+      console.log(chalk.bgYellow.black.bold(' [PASSED WITH WARNINGS] '));
+      console.log(chalk.yellow(`${warnings.length} non-breaking issue(s) flagged. Review before merging.`));
     } else {
+      // Full pass
       console.log(chalk.bgGreen.black.bold(' [PASSED] '));
+      console.log(chalk.green('API contract is intact. Safe to merge.'));
     }
     console.log();
   }
 };
 
-function printChange(change: FunctionChange, color: 'red' | 'yellow') {
-  const fileLink = chalk.cyan(`${change.file}:${change.lineStart}`);
-  const symbol = chalk.bold(change.name);
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+function printChange(change: FunctionChange, color: 'red' | 'yellow'): void {
   const colorizer = color === 'red' ? chalk.red : chalk.yellow;
-  
-  console.log(`  ${colorizer('►')} ${symbol} ${chalk.dim(`(${change.changeType})`)}`);
-  console.log(`    ${fileLink}`);
-  console.log(`    ${change.message}`);
+
+  // Defensive access — all fields may be missing in edge cases
+  const name       = change.name?.trim()     || '<anonymous>';
+  const file       = change.file?.trim()     || 'unknown file';
+  const changeType = change.changeType       || 'unknown_change';
+  const message    = change.message?.trim()  || describeChangeType(changeType);
+  const line       = change.lineStart > 0 ? `:${change.lineStart}` : '';
+
+  console.log(`  ${colorizer('►')} ${chalk.bold(name)} ${chalk.dim(`(${changeType})`)}`);
+  console.log(`    ${chalk.cyan(`${file}${line}`)}`);
+  console.log(`    ${message}`);
+}
+
+/**
+ * Fallback description when `message` is absent from a FunctionChange.
+ * Should not happen in practice — rules always set message — but defensive.
+ */
+function describeChangeType(changeType: string): string {
+  const descriptions: Record<string, string> = {
+    param_removed:                'A parameter was removed from the public API.',
+    param_reordered:              'Parameters were reordered, breaking positional callers.',
+    required_param_added:         'A required parameter was added.',
+    param_type_narrowed:          'A parameter type was narrowed, restricting accepted inputs.',
+    optional_param_added:         'An optional parameter was added.',
+    return_type_nullable:         'The return type is now nullable.',
+    return_type_narrowed:         'The return type was narrowed.',
+    symbol_unexported:            'A previously exported symbol was made internal.',
+    symbol_deleted:               'A public symbol was removed entirely.',
+    symbol_added:                 'A new symbol was added to the public API.',
+    sync_to_async:                'A synchronous function was made asynchronous.',
+    return_type_widened:          'The return type was widened (safe).',
+    param_type_widened:           'A parameter type was widened (safe).',
+    overload_removed:             'A function overload was removed.',
+    overload_added:               'A function overload was added.',
+    static_changed:               'The static modifier was changed.',
+    interface_property_required:  'A previously optional interface property is now required.',
+    interface_property_removed:   'A required interface property was removed.',
+    enum_value_changed:           'An enum member value changed.',
+    symbol_exported:              'A symbol was newly exported.',
+    async_to_sync:                'An async function was made synchronous.',
+    return_never:                 'The function now returns never.',
+    default_value_changed:        'A default parameter value changed.',
+    constructor_changed:          'The constructor signature changed.',
+    visibility_narrowed:          'Visibility was narrowed.',
+    param_mutability_narrowed:    'A parameter mutability was narrowed.',
+    param_mutability_widened:     'A parameter mutability was widened (safe).',
+    rest_parameter_changed:       'The rest parameter was changed.',
+    generic_narrowed:             'A generic constraint was narrowed.',
+  };
+  return descriptions[changeType] ?? `Change detected: ${changeType}`;
 }
