@@ -98,6 +98,66 @@ function buildMarkdown(
       lines.push(formatTableRow(c));
     }
     lines.push('');
+
+    // ── Call-site details (populated by the JIT tracer) ─────────────────
+    const changesWithCallers = breaking.filter(c => c.callers && c.callers.length > 0);
+    if (changesWithCallers.length > 0) {
+      lines.push('<details>');
+      lines.push('<summary><strong>📍 Affected Call Sites</strong></summary>');
+      lines.push('');
+
+      for (const c of changesWithCallers) {
+        const name = sanitizeInline(c.name || '<anonymous>');
+        const callers = c.callers;
+
+        const broken  = callers.filter(s => s.isBroken);
+        const fixed   = callers.filter(s => s.isFixed);
+        const indeterminate = callers.filter(s => s.isIndeterminate);
+        const ok      = callers.filter(s => !s.isBroken && !s.isFixed && !s.isIndeterminate);
+
+        lines.push(`#### \`${name}\` — ${callers.length} call site(s)`);
+        lines.push('');
+
+        // Broken
+        for (const site of broken) {
+          const expected = c.requiredParamCount !== undefined && c.totalParamCount !== undefined
+            ? c.requiredParamCount === c.totalParamCount
+              ? `${c.requiredParamCount}`
+              : `${c.requiredParamCount}-${c.totalParamCount}`
+            : '?';
+          lines.push(
+            `- ❌ \`${sanitizeInline(site.file)}:${site.lineStart}\` — ` +
+            `provides ${site.argumentCount} arg(s), needs ${expected}`
+          );
+        }
+
+        // Fixed
+        for (const site of fixed) {
+          lines.push(
+            `- ✅ \`${sanitizeInline(site.file)}:${site.lineStart}\` — ` +
+            `Fixed by developer in this PR`
+          );
+        }
+
+        // Indeterminate
+        for (const site of indeterminate) {
+          lines.push(
+            `- ⚠️ \`${sanitizeInline(site.file)}:${site.lineStart}\` — ` +
+            `uses spread args (indeterminate)`
+          );
+        }
+
+        // OK
+        if (ok.length > 0) {
+          lines.push(`- ✓ ${ok.length} other call site(s) have correct arguments`);
+        }
+
+        lines.push('');
+      }
+
+      lines.push('</details>');
+      lines.push('');
+    }
   } else {
     lines.push('### [SAFE] No Breaking API Changes');
     lines.push('');
