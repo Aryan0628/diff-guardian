@@ -24,8 +24,8 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as path from 'path';
-import { SUPPORTED_EXTENSIONS, EXCLUDED_PATH_SEGMENTS, EXCLUDED_FILE_SUFFIXES } from '../core/constants';
 import { FileDiff } from '../core/types';
+import { isTargetFile } from '../core/utils';
 const execAsync = promisify(exec);
 
 // 10MB limit
@@ -167,15 +167,5 @@ async function runGitShow(
   }
 }
 
-function isTargetFile(filePath: string): boolean {
-  const ext = path.extname(filePath);
-
-  if (!SUPPORTED_EXTENSIONS.has(ext)) return false;
-
-  if (EXCLUDED_FILE_SUFFIXES.some(s => filePath.endsWith(s))) return false;
-
-  const segments = filePath.split(/[\\/]/);
-  if (segments.some(seg => EXCLUDED_PATH_SEGMENTS.has(seg))) return false;
-
-  return true;
-}
+// isTargetFile is now imported from '../core/utils' — single source of truth
+// shared between git-diff.ts and the JIT scanner

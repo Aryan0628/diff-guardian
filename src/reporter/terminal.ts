@@ -145,6 +145,53 @@ function printChange(change: FunctionChange, color: 'red' | 'yellow'): void {
   console.log(`  ${colorizer('►')} ${chalk.bold(name)} ${chalk.dim(`(${changeType})`)}`);
   console.log(`    ${chalk.cyan(`${file}${line}`)}`);
   console.log(`    ${message}`);
+
+  // ── Call-site sub-items (populated by the JIT tracer) ──────────────────
+  const callers = change.callers;
+  if (callers && callers.length > 0) {
+    const broken  = callers.filter(c => c.isBroken);
+    const fixed   = callers.filter(c => c.isFixed);
+    const indeterminate = callers.filter(c => c.isIndeterminate);
+    const ok      = callers.filter(c => !c.isBroken && !c.isFixed && !c.isIndeterminate);
+
+    console.log(chalk.dim(`    Affected call sites (${callers.length}):`));
+
+    // Broken call sites — most important, shown first
+    for (const site of broken) {
+      const expected = change.requiredParamCount !== undefined && change.totalParamCount !== undefined
+        ? change.requiredParamCount === change.totalParamCount
+          ? `${change.requiredParamCount}`
+          : `${change.requiredParamCount}-${change.totalParamCount}`
+        : '?';
+      console.log(
+        `      ${chalk.red('❌')} ${chalk.cyan(`${site.file}:${site.lineStart}`)}` +
+        chalk.red(` — provides ${site.argumentCount} arg(s), needs ${expected}`)
+      );
+    }
+
+    // Fixed call sites — developer already updated these
+    for (const site of fixed) {
+      console.log(
+        `      ${chalk.green('✅')} ${chalk.cyan(`${site.file}:${site.lineStart}`)}` +
+        chalk.green(` — Fixed by developer in this PR`)
+      );
+    }
+
+    // Indeterminate call sites — spread arguments, can't verify
+    for (const site of indeterminate) {
+      console.log(
+        `      ${chalk.yellow('⚠️')} ${chalk.cyan(`${site.file}:${site.lineStart}`)}` +
+        chalk.yellow(` — uses spread args (indeterminate)`)
+      );
+    }
+
+    // OK call sites — correct arg count, not in diff
+    if (ok.length > 0) {
+      console.log(
+        chalk.dim(`      ✓ ${ok.length} other call site(s) have correct arguments`)
+      );
+    }
+  }
 }
 
 /**
