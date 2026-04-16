@@ -1,6 +1,17 @@
 #!/bin/sh
 
-# The Native Escape Hatch
-# If developer ran git push --no-verify, this hook is skipped entirely internally by Git.
+# ── Diff-Guardian Pre-Push Hook ─────────────────────────────────────────────
+# Native escape hatch: `git push --no-verify` skips this hook entirely.
+
+# Node version guard — requires Node 18+
+NODE_MAJOR=$(node -e "process.stdout.write(process.versions.node.split('.')[0])" 2>/dev/null)
+if [ -z "$NODE_MAJOR" ] || [ "$NODE_MAJOR" -lt 18 ]; then
+  echo " [diff-guardian] Skipping: requires Node.js 18 or higher (found: ${NODE_MAJOR:-none})."
+  exit 0
+fi
+
 echo " Diff-Guardian: Running pre-push API contract gatekeeper..."
-npx dg
+
+# 512 MB heap — sufficient for repos up to ~5,000 files.
+# Raise to 4096 in .huskyrc or your shell profile for monorepos.
+NODE_OPTIONS="--max-old-space-size=512" npx dg
