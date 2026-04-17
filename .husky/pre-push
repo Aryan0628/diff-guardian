@@ -17,7 +17,7 @@ fi
 # Source Control UI (Sync Changes button), not a terminal.
 if [ -n "$VSCODE_GIT_ASKPASS_MAIN" ]; then
   echo " Diff-Guardian: VS Code detected — running advisory analysis..."
-  NODE_OPTIONS="--max-old-space-size=512" DG_HOOK=pre-push npx dg --report-file .dg-report.json
+  NODE_OPTIONS="--max-old-space-size=512" DG_HOOK=pre-push npx dg --report-file .dg-report.json || true
   exit 0
 fi
 
