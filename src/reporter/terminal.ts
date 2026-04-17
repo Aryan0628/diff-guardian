@@ -216,6 +216,9 @@ function printChange(change: FunctionChange, color: 'red' | 'yellow'): void {
       );
     }
   }
+
+  // ── Visual separator between change entries ──────────────────────────────
+  console.log();
 }
 
 /**

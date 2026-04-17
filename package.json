@@ -3,6 +3,16 @@
   "version": "1.0.0",
   "description": "Impact-aware git diff CLI using WASM tree-sitter AST to map API blast radius.",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/",
+    "grammars/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "bin": {
     "diff-guardian": "./dist/cli.js",
     "dg": "./dist/cli.js"
@@ -11,6 +21,7 @@
     "prepare": "husky",
     "init": "npm install && npm run build:grammars",
     "build": "tsc",
+    "postbuild": "chmod +x dist/cli.js",
     "build:grammars": "mkdir -p grammars && npx tree-sitter build --wasm ./node_modules/tree-sitter-typescript/typescript && npx tree-sitter build --wasm ./node_modules/tree-sitter-javascript && npx tree-sitter build --wasm ./node_modules/tree-sitter-python && npx tree-sitter build --wasm ./node_modules/tree-sitter-java && npx tree-sitter build --wasm ./node_modules/tree-sitter-rust && npx tree-sitter build --wasm ./node_modules/tree-sitter-go && mv *.wasm ./grammars/",
     "dev": "tsx src/index.ts",
     "test": "vitest",
