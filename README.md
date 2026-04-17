@@ -1,43 +1,45 @@
 <p align="center">
+  <img src=".github/banner.png" alt="Diff Guardian" width="600" />
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/npm/v/diff-guardian?style=flat-square&color=blue" alt="npm version" />
   <img src="https://img.shields.io/npm/l/diff-guardian?style=flat-square" alt="license" />
   <img src="https://img.shields.io/node/v/diff-guardian?style=flat-square" alt="node version" />
   <img src="https://img.shields.io/github/actions/workflow/status/Aryan0628/diff-guardian/diff-guardian.yml?branch=main&style=flat-square&label=CI" alt="CI status" />
 </p>
 
-<h1 align="center">🛡️ Diff-Guardian</h1>
-
 <p align="center">
   <strong>Impact-aware git diff engine that uses WASM Tree-Sitter AST parsing to detect breaking API changes before they ship.</strong>
 </p>
 
 <p align="center">
-  <a href="https://diff-guardian.dev/docs">Full Documentation</a> ·
-  <a href="https://diff-guardian.dev/docs/rules">Rules Reference</a> ·
-  <a href="#quick-start">Quick Start</a> ·
+  <a href="https://diff-guardian.dev/docs">Documentation</a> &middot;
+  <a href="https://diff-guardian.dev/docs/rules">Rules Reference</a> &middot;
+  <a href="#quick-start">Quick Start</a> &middot;
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
 ---
 
-## Why Diff-Guardian?
+## Why Diff Guardian?
 
-Traditional diffs show **what changed**. Diff-Guardian shows **what breaks**.
+Traditional diffs show **what changed**. Diff Guardian shows **what breaks**.
 
-It parses your code into AST signatures using WASM-compiled Tree-Sitter grammars, compares the before/after states, and classifies every change against **26 production rules** — from removed parameters to narrowed generics to enum value mutations. Then it traces every call site in your codebase to show **exactly who is affected**.
+It parses your code into AST signatures using WASM-compiled Tree-Sitter grammars, compares the before and after states, and classifies every change against **26 production rules** — from removed parameters to narrowed generics to enum value mutations. It then traces every call site in your codebase to show **exactly who is affected**.
 
 ```
 $ npx dg compare main feature-branch
 
-  Diff-Guardian Compare
+  Diff Guardian · Compare
 
   Base: main
   Head: feature-branch
 
-  ❌ BREAKING  src/api/payments.ts → processPayment()
+  BREAKING  src/api/payments.ts → processPayment()
      R01: Parameter 'currency' was removed. Callers providing this argument will fail.
 
-     📍 3 call sites affected:
+     3 call sites affected:
         src/checkout/handler.ts:42   processPayment("usd", 100)
         src/invoices/generator.ts:18 processPayment(curr, amount)
         tests/payments.test.ts:7     processPayment("eur", 50)
@@ -49,14 +51,16 @@ $ npx dg compare main feature-branch
 
 ## Features
 
-- 🌳 **AST-Powered Analysis** — Tree-Sitter WASM grammars parse your code into structural signatures, not regex
-- 🔍 **26 Classification Rules** — Covers parameter changes, return types, generics, visibility, enums, interfaces, and more
-- 📡 **Blast Radius Tracing** — JIT import scanner + call-site tracer shows every consumer affected by a breaking change
-- 🤖 **CI/CD Native** — Auto-detects GitHub Actions and posts PR comments with full audit reports
-- 🔒 **Git Hook Enforcement** — Built-in Husky hooks block broken code at `pre-push`, `pre-merge-commit`, and `post-merge`
-- 🌐 **Multi-Language** — TypeScript, JavaScript, Python, Go, Java, and Rust
-- ⚡ **Fast** — WASM grammars cached to disk; lazy graph only traces what's broken
-- 📦 **Zero Config** — Works out of the box with `npx dg`
+| Capability | Description |
+|---|---|
+| **AST-Powered Analysis** | Tree-Sitter WASM grammars parse your code into structural signatures — not regex |
+| **26 Classification Rules** | Covers parameter changes, return types, generics, visibility, enums, interfaces, and more |
+| **Blast Radius Tracing** | JIT import scanner and call-site tracer shows every consumer affected by a breaking change |
+| **CI/CD Native** | Auto-detects GitHub Actions and posts PR comments with full audit reports |
+| **Git Hook Enforcement** | Built-in Husky hooks block broken code at `pre-push`, `pre-merge-commit`, and `post-merge` |
+| **Multi-Language** | TypeScript, JavaScript, Python, Go, Java, and Rust |
+| **Fast** | WASM grammars cached to disk; lazy graph only traces what is broken |
+| **Zero Config** | Works out of the box with `npx dg` |
 
 ---
 
@@ -81,7 +85,7 @@ npx dg init
 This scaffolds two files:
 
 | File | Purpose |
-|------|---------|
+|---|---|
 | `dg.config.json` | Project configuration |
 | `.github/workflows/diff-guardian.yml` | GitHub Actions workflow for automated PR audits |
 
@@ -114,9 +118,9 @@ npx dg
 Auto-detects the execution context:
 
 | Context | Behavior |
-|---------|----------|
-| **GitHub Actions** | Compares PR base → head, posts a comment on the PR |
-| **Local terminal** | Compares default branch → `HEAD`, prints terminal report |
+|---|---|
+| **GitHub Actions** | Compares PR base to head and posts a comment on the PR |
+| **Local terminal** | Compares default branch to `HEAD` and prints a terminal report |
 
 ### `dg check` — Working Tree Analysis
 
@@ -153,10 +157,10 @@ npx dg compare HEAD~3 HEAD
 npx dg trace processPayment
 ```
 
-Shows every file that imports the given symbol and where it's used:
+Shows every file that imports the given symbol and where it is used:
 
 ```
-  📍 processPayment — 3 importer(s) found
+  processPayment — 3 importer(s) found
 
   src/checkout/handler.ts
     L4  processPayment  [named]
@@ -187,7 +191,7 @@ Creates `dg.config.json` and the GitHub Actions workflow. Skips files that alrea
 ### Global Options
 
 | Option | Description |
-|--------|-------------|
+|---|---|
 | `--help`, `-h` | Show help message |
 | `--staged` | Limit `check` to staged files only |
 | `--report-file <path>` | Write JSON report to a file |
@@ -196,7 +200,7 @@ Creates `dg.config.json` and the GitHub Actions workflow. Skips files that alrea
 
 ## Configuration
 
-Diff-Guardian looks for a `dg.config.json` file in your project root.
+Diff Guardian looks for a `dg.config.json` file in your project root.
 
 ```json
 {
@@ -210,10 +214,10 @@ Diff-Guardian looks for a `dg.config.json` file in your project root.
 ```
 
 | Key | Type | Default | Description |
-|-----|------|---------|-------------|
+|---|---|---|---|
 | `baseBranch` | `string` | `"main"` | Default branch to compare against |
 | `failOnWarnings` | `boolean` | `false` | Exit with code `1` on warnings (not just breaking changes) |
-| `enableTracer` | `boolean` | `true` | Enable/disable call-site tracing |
+| `enableTracer` | `boolean` | `true` | Enable or disable call-site tracing |
 | `maxGrepResults` | `number` | `500` | Max files returned by `git grep` per symbol |
 | `maxBarrelDepth` | `number` | `10` | Max recursive barrel file depth |
 | `maxTracerFiles` | `number` | `100` | Max files to AST-parse for call sites per symbol |
@@ -222,12 +226,12 @@ Diff-Guardian looks for a `dg.config.json` file in your project root.
 
 ## Classification Rules
 
-Diff-Guardian ships with **26 rules** organized into breaking changes and warnings:
+Diff Guardian ships with **26 rules** organized into breaking changes and warnings.
 
-### Breaking Changes 🔴
+### Breaking Changes
 
 | Rule | Name | Description |
-|------|------|-------------|
+|---|---|---|
 | R01 | Parameter Removed | A parameter was removed from a function signature |
 | R02 | Parameter Reordered | Parameters were reordered in a function signature |
 | R03 | Required Parameter Added | A required parameter was added to a function signature |
@@ -248,10 +252,10 @@ Diff-Guardian ships with **26 rules** organized into breaking changes and warnin
 | R26 | Interface Property Removed | An interface property was removed |
 | R27 | Enum Member Changed | Enum members were removed or values changed |
 
-### Warnings 🟡
+### Warnings
 
 | Rule | Name | Description |
-|------|------|-------------|
+|---|---|---|
 | R05 | Optional Parameter Added | An optional parameter was added |
 | R12 | Parameter Type Widened | A parameter's accepted type was widened |
 | R14 | Rest Parameter Changed | A rest parameter was added or modified |
@@ -260,7 +264,7 @@ Diff-Guardian ships with **26 rules** organized into breaking changes and warnin
 | R23 | Default Value Changed | A parameter's default value was changed |
 | R28 | Symbol Exported | A new symbol was exported |
 
-> 📖 **See the [full rules documentation](https://diff-guardian.dev/docs/rules) for detailed examples and remediation guidance.**
+> For detailed examples and remediation guidance, see the [full rules documentation](https://diff-guardian.dev/docs/rules).
 
 ---
 
@@ -271,7 +275,7 @@ Diff-Guardian ships with **26 rules** organized into breaking changes and warnin
 Run `npx dg init` to generate the workflow file, or add this to your pipeline manually:
 
 ```yaml
-name: "Diff-Guardian"
+name: "Diff Guardian"
 
 on:
   pull_request:
@@ -310,14 +314,14 @@ jobs:
 
       - run: npm run build
 
-      - name: Run Diff-Guardian
+      - name: Run Diff Guardian
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: npx dg
 ```
 
-In CI mode, Diff-Guardian automatically:
+In CI mode, Diff Guardian automatically:
 
 - Resolves `GITHUB_BASE_REF` and `GITHUB_HEAD_SHA` for accurate comparison
 - Posts a formatted comment on the PR with the full audit report
@@ -326,10 +330,10 @@ In CI mode, Diff-Guardian automatically:
 
 ### Git Hook Enforcement
 
-Diff-Guardian ships with Husky hooks for local enforcement:
+Diff Guardian ships with Husky hooks for local enforcement:
 
 | Hook | Behavior |
-|------|----------|
+|---|---|
 | `pre-push` | **Blocks push** if breaking changes are detected (`exit 1`) |
 | `pre-merge-commit` | **Blocks merge** if breaking changes are detected (`exit 1`) |
 | `post-merge` | Advisory scan after merge — generates `.dg-report.json` |
@@ -339,7 +343,7 @@ Diff-Guardian ships with Husky hooks for local enforcement:
 ## Supported Languages
 
 | Language | Grammar | Extensions |
-|----------|---------|------------|
+|---|---|---|
 | TypeScript | `tree-sitter-typescript` | `.ts`, `.tsx` |
 | JavaScript | `tree-sitter-javascript` | `.js`, `.jsx` |
 | Python | `tree-sitter-python` | `.py` |
@@ -351,7 +355,7 @@ Diff-Guardian ships with Husky hooks for local enforcement:
 
 ## Programmatic API
 
-Diff-Guardian can be used as a library in your own tooling:
+Diff Guardian can be used as a library in your own tooling:
 
 ```typescript
 import { runPipeline, ClassifierEngine, ASTMapper } from 'diff-guardian';
@@ -397,20 +401,20 @@ import type {
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                          CLI Layer                               │
+┌──────────────────────────────────────────────────────────────────┐
+│                           CLI Layer                              │
 │  npx dg check | compare | trace | rules | init                  │
-├─────────────────────────────────────────────────────────────────┤
-│                        Pipeline                                  │
+├──────────────────────────────────────────────────────────────────┤
+│                         Pipeline                                 │
 │  Orchestrates the full analysis flow                             │
-├─────────────┬──────────────┬──────────────┬─────────────────────┤
-│  Git Diff   │  AST Mapper  │  Classifier  │  Reporter           │
-│  Parser     │  (WASM TS)   │  Engine      │  (Terminal/GitHub)   │
-├─────────────┴──────────────┼──────────────┴─────────────────────┤
-│     Language Translators   │    Tracer (Scanner + Call Sites)     │
-│  TS · JS · Python · Go    │    JIT import resolution             │
-│  Java · Rust               │    Lazy blast-radius graph           │
-└────────────────────────────┴─────────────────────────────────────┘
+├──────────────┬──────────────┬──────────────┬─────────────────────┤
+│  Git Diff    │  AST Mapper  │  Classifier  │  Reporter           │
+│  Parser      │  (WASM TS)   │  Engine      │  (Terminal/GitHub)  │
+├──────────────┴──────────────┼──────────────┴─────────────────────┤
+│     Language Translators    │    Tracer (Scanner + Call Sites)    │
+│  TS · JS · Python · Go     │    JIT import resolution            │
+│  Java · Rust                │    Lazy blast-radius graph          │
+└─────────────────────────────┴────────────────────────────────────┘
 ```
 
 ---
@@ -418,7 +422,7 @@ import type {
 ## Exit Codes
 
 | Code | Meaning |
-|------|---------|
+|---|---|
 | `0` | Clean — no breaking changes detected |
 | `1` | Breaking changes detected (or warnings, if `failOnWarnings` is enabled) |
 | `2` | Infrastructure error (missing grammar, parse failure, etc.) |
@@ -427,14 +431,14 @@ import type {
 
 ## Requirements
 
-- **Node.js** ≥ 18
+- **Node.js** >= 18
 - **Git** — must be run inside a git repository
 
 ---
 
 ## Documentation
 
-> 📖 **For full documentation, guides, and examples, visit [diff-guardian.dev/docs](https://diff-guardian.dev/docs)**
+> For full documentation, guides, and examples, visit [diff-guardian.dev/docs](https://diff-guardian.dev/docs).
 
 The docs site covers:
 
@@ -449,16 +453,12 @@ The docs site covers:
 
 ## Contributing
 
-We welcome contributions! Please see our **[Contributing Guide](CONTRIBUTING.md)** for details on:
+Contributions are welcome. Please see the [Contributing Guide](CONTRIBUTING.md) for details on setting up your development environment, project architecture, writing classification rules, and submitting pull requests.
 
-- Setting up your development environment
-- Project structure and architecture
-- Writing and testing classification rules
-- Submitting pull requests
-- Code style and conventions
+Please review our [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
 
 ---
 
 ## License
 
-[MIT](LICENSE) © Aryan Gupta
+[MIT](LICENSE) &copy; Aryan Gupta
