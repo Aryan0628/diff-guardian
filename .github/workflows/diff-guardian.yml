@@ -33,4 +33,5 @@ jobs:
       - name: Run Diff-Guardian
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: npx dg

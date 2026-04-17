@@ -154,6 +154,7 @@ jobs:
       - name: Run Diff-Guardian
         env:
           GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          GITHUB_HEAD_SHA: \${{ github.event.pull_request.head.sha }}
         run: npx dg
 `;
 
@@ -375,8 +376,12 @@ async function runSmartDefault(
     };
 
     try {
-      const baseSha = process.env.GITHUB_BASE_REF || getDefaultBranch();
-      const headSha = process.env.GITHUB_SHA || 'HEAD';
+      // GITHUB_BASE_REF is the bare branch name (e.g. 'main') — needs 'origin/' prefix
+      // to be resolvable in the runner's git context.
+      // GITHUB_HEAD_SHA is the actual PR head commit; GITHUB_SHA is a merge commit.
+      const baseRef = process.env.GITHUB_BASE_REF;
+      const baseSha = baseRef ? `origin/${baseRef}` : getDefaultBranch();
+      const headSha = process.env.GITHUB_HEAD_SHA || process.env.GITHUB_SHA || 'HEAD';
 
       await runPipeline({ baseSha, headSha, repoRoot, config: reporterConfig });
 
