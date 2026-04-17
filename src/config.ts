@@ -18,7 +18,7 @@ export interface DgConfig {
 
 export const CONFIG_FILE = 'dg.config.json';
 
-export function loadConfig(repoRoot: string, strict: boolean): DgConfig {
+export function loadConfig(repoRoot: string = process.cwd()): DgConfig {
   const configPath = path.join(repoRoot, CONFIG_FILE);
   if (fs.existsSync(configPath)) {
     try {
@@ -31,7 +31,7 @@ export function loadConfig(repoRoot: string, strict: boolean): DgConfig {
   return {};
 }
 
-export function saveConfig(config: DgConfig): void {
-  const configPath = path.join(process.cwd(), CONFIG_FILE);
+export function saveConfig(config: DgConfig, repoRoot: string = process.cwd()): void {
+  const configPath = path.join(repoRoot, CONFIG_FILE);
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 }

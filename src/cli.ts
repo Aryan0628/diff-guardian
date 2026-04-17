@@ -59,7 +59,7 @@ function getDefaultBranch(): string {
     const current = execSync("git branch --show-current", { encoding: 'utf-8' }).trim();
     const other = branches.find(b => b && b !== current);
     if (other) return other;
-  } catch(e) {
+  } catch (e) {
     // Ignore error
   }
   return 'main';
@@ -173,7 +173,7 @@ function runInit(repoRoot: string): void {
   let skipped = 0;
 
   // ── 1. Scaffold GitHub Actions workflow ──────────────────────────────────
-  const workflowDir  = path.join(repoRoot, '.github', 'workflows');
+  const workflowDir = path.join(repoRoot, '.github', 'workflows');
   const workflowPath = path.join(workflowDir, 'diff-guardian.yml');
 
   if (fs.existsSync(workflowPath)) {
@@ -280,8 +280,8 @@ async function runTrace(symbolName: string, repoRoot: string): Promise<void> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function runCheck(
-  repoRoot:    string,
-  staged:      boolean,
+  repoRoot: string,
+  staged: boolean,
   pathFilter?: string,
   failOnWarnings?: boolean,
   reportFile?: string,
@@ -325,8 +325,8 @@ async function runCheck(
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function runCompare(
-  baseSha:  string,
-  headSha:  string,
+  baseSha: string,
+  headSha: string,
   repoRoot: string,
   failOnWarnings?: boolean,
   reportFile?: string,
@@ -430,7 +430,7 @@ async function main() {
     alias: { h: 'help' },
   });
 
-  const command    = args._[0];
+  const command = args._[0];
   const reportFile = args['report-file'] || undefined;
 
   // ── Hook context (set by husky hooks via DG_HOOK env var) ────────────────
