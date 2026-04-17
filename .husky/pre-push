@@ -1,7 +1,8 @@
 #!/bin/sh
 
 # ── Diff-Guardian Pre-Push Hook ─────────────────────────────────────────────
-# Native escape hatch: `git push --no-verify` skips this hook entirely.
+# Terminal push: strict gatekeeper (exit 1 blocks, --no-verify bypasses)
+# VS Code push:  advisory mode (push goes through, .dg-report.json generated)
 
 # Node version guard — requires Node 18+
 NODE_MAJOR=$(node -e "process.stdout.write(process.versions.node.split('.')[0])" 2>/dev/null)
@@ -10,8 +11,20 @@ if [ -z "$NODE_MAJOR" ] || [ "$NODE_MAJOR" -lt 18 ]; then
   exit 0
 fi
 
+# ── VS Code detection ───────────────────────────────────────────────────────
+# VS Code's Git extension injects VSCODE_GIT_ASKPASS_MAIN into all spawned
+# git processes. When present, we know the push originated from VS Code's
+# Source Control UI (Sync Changes button), not a terminal.
+if [ -n "$VSCODE_GIT_ASKPASS_MAIN" ]; then
+  echo " Diff-Guardian: VS Code detected — running advisory analysis..."
+  NODE_OPTIONS="--max-old-space-size=512" DG_HOOK=pre-push npx dg --report-file .dg-report.json
+  exit 0
+fi
+
+# ── Terminal: strict gatekeeper ─────────────────────────────────────────────
+# Native escape hatch: `git push --no-verify` skips this hook entirely.
 echo " Diff-Guardian: Running pre-push API contract gatekeeper..."
 
 # 512 MB heap — sufficient for repos up to ~5,000 files.
 # Raise to 4096 in .huskyrc or your shell profile for monorepos.
-NODE_OPTIONS="--max-old-space-size=512" npx dg
+NODE_OPTIONS="--max-old-space-size=512" DG_HOOK=pre-push npx dg

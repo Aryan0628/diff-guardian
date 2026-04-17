@@ -280,6 +280,8 @@ async function runCheck(
   staged:      boolean,
   pathFilter?: string,
   failOnWarnings?: boolean,
+  reportFile?: string,
+  hookContext?: 'pre-push' | 'pre-merge-commit' | 'post-merge',
 ): Promise<number> {
   const mode = staged ? 'staged' : 'working tree';
   const headRef = staged ? STAGED : WORKING_TREE;
@@ -295,6 +297,8 @@ async function runCheck(
     format: 'terminal',
     quiet: false,
     failOnWarnings,
+    reportFile,
+    hookContext,
   };
 
   try {
@@ -321,6 +325,8 @@ async function runCompare(
   headSha:  string,
   repoRoot: string,
   failOnWarnings?: boolean,
+  reportFile?: string,
+  hookContext?: 'pre-push' | 'pre-merge-commit' | 'post-merge',
 ): Promise<number> {
   console.log(chalk.bold.blue(`\nDiff-Guardian Compare\n`));
   console.log(chalk.dim(`  Base: ${baseSha}`));
@@ -331,6 +337,8 @@ async function runCompare(
     format: 'terminal',
     quiet: false,
     failOnWarnings,
+    reportFile,
+    hookContext,
   };
 
   try {
@@ -349,6 +357,8 @@ async function runCompare(
 async function runSmartDefault(
   repoRoot: string,
   failOnWarnings?: boolean,
+  reportFile?: string,
+  hookContext?: 'pre-push' | 'pre-merge-commit' | 'post-merge',
 ): Promise<number> {
   if (process.env.GITHUB_ACTIONS === 'true') {
     // ── CI/CD Mode ─────────────────────────────────────────────────────
@@ -360,6 +370,8 @@ async function runSmartDefault(
       prNumber: getPrNumber(),
       repoSlug: process.env.GITHUB_REPOSITORY,
       failOnWarnings,
+      reportFile,
+      hookContext,
     };
 
     try {
@@ -384,6 +396,8 @@ async function runSmartDefault(
       format: 'terminal',
       quiet: false,
       failOnWarnings,
+      reportFile,
+      hookContext,
     };
 
     try {
@@ -402,10 +416,15 @@ async function runSmartDefault(
 async function main() {
   const args = minimist(process.argv.slice(2), {
     boolean: ['help', 'staged'],
+    string: ['report-file'],
     alias: { h: 'help' },
   });
 
-  const command = args._[0];
+  const command    = args._[0];
+  const reportFile = args['report-file'] || undefined;
+
+  // ── Hook context (set by husky hooks via DG_HOOK env var) ────────────────
+  const hookContext = (process.env.DG_HOOK as 'pre-push' | 'pre-merge-commit' | 'post-merge') || undefined;
 
   // ── Help ─────────────────────────────────────────────────────────────────
   if (args.help) {
@@ -451,7 +470,7 @@ async function main() {
   if (command === 'check') {
     const staged = args.staged || false;
     const pathFilter = args._[1] || undefined; // optional path scope
-    const exitCode = await runCheck(repoRoot, staged, pathFilter, config.failOnWarnings);
+    const exitCode = await runCheck(repoRoot, staged, pathFilter, config.failOnWarnings, reportFile, hookContext);
     process.exit(exitCode);
   }
 
@@ -470,13 +489,13 @@ async function main() {
       process.exit(1);
     }
 
-    const exitCode = await runCompare(baseSha, headSha, repoRoot, config.failOnWarnings);
+    const exitCode = await runCompare(baseSha, headSha, repoRoot, config.failOnWarnings, reportFile, hookContext);
     process.exit(exitCode);
   }
 
   // ── npx dg (Smart Default) ──────────────────────────────────────────────
   if (!command) {
-    const exitCode = await runSmartDefault(repoRoot, config.failOnWarnings);
+    const exitCode = await runSmartDefault(repoRoot, config.failOnWarnings, reportFile, hookContext);
     process.exit(exitCode);
   }
 }

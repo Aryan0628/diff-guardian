@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { extractGitSources } from './parsers/git-diff';
 import { ASTMapper } from './parsers/ast-mapper';
 import { ClassifierEngine } from './classifier/engine';
@@ -116,6 +118,17 @@ export async function runPipeline(opts: PipelineOptions): Promise<number> {
     await JsonReporter.render(result, opts.config);
   } else {
     await TerminalReporter.render(result, opts.config);
+  }
+
+  // ── 5.5 Write JSON report file (if requested) ──────────────────────────────
+  if (opts.config.reportFile) {
+    try {
+      const reportPath = path.resolve(repoRoot, opts.config.reportFile);
+      fs.writeFileSync(reportPath, JSON.stringify(result, null, 2), 'utf-8');
+      console.log(`[pipeline] Report written to ${opts.config.reportFile}`);
+    } catch (err: any) {
+      console.warn(`[pipeline] Failed to write report file: ${err.message}`);
+    }
   }
 
   // ── 6. Return exit code ────────────────────────────────────────────────────
