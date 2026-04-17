@@ -237,7 +237,8 @@ export interface FunctionChange {
 
   // ── Tracer metadata ───────────────────────────────────────────────────────
   // Populated by the pipeline after classification, consumed by the tracer.
-  // Only meaningful when symbolType === 'function'.
+
+  // Function-specific (symbolType === 'function')
   requiredParamCount?: number;  // minimum args the new signature requires
                                 // = params.filter(p => !p.optional && !p.isRest).length
   totalParamCount?:    number;  // maximum args (including optional, excluding rest)
@@ -245,6 +246,12 @@ export interface FunctionChange {
   validArgCounts?:     Set<number>;  // for overloaded functions: the set of valid
                                      // argument counts across ALL overload signatures
                                      // undefined = not overloaded, use requiredParamCount..totalParamCount range
+
+  // Enum-specific (symbolType === 'enum')
+  removedEnumMembers?: string[];   // member names that were deleted: ['Active', 'Suspended']
+                                   // tracer greps for EnumName.MemberName to find broken usages
+  changedEnumMembers?: string[];   // member names whose VALUE changed: ['Status']
+                                   // same tracing strategy — runtime behavior corruption
 }
 
 // ── RiskFile ──────────────────────────────────────────────────────────────────
@@ -322,10 +329,19 @@ export interface ImportReference {
   isBarrel:     boolean;   // true if this file just re-exports the symbol
                            // barrel files are added to the scanner queue, not the tracer queue
   importLine:   number;    // 1-indexed line of the import statement
-  importType:   'static'   // import { x } from './mod'
-              | 'dynamic'  // const { x } = await import('./mod')
-              | 'require'  // const { x } = require('./mod')
-              | 'wildcard'; // import * as mod from './mod' — localName = 'mod.processPayment'
+  importType:   'static'          // TS/JS:   import { x } from './mod'
+              | 'dynamic'         // TS/JS:   const { x } = await import('./mod')
+              | 'require'         // TS/JS:   const { x } = require('./mod')
+              | 'wildcard'        // TS/JS:   import * as mod from './mod'
+              | 'from_import'     // Python:  from payments import process_payment
+              | 'module_import'   // Python:  import payments → payments.process_payment()
+              | 'java_import'     // Java:    import com.example.Status;
+              | 'static_import'   // Java:    import static com.example.Status.ACTIVE;
+              | 'go_import'       // Go:      import "payments" / alias "payments"
+              | 'dot_import'      // Go:      import . "payments" → bare identifier
+              | 'use'             // Rust:    use crate::payments::process_payment;
+              | 'use_glob'        // Rust:    use crate::payments::*;
+              | 'use_group';      // Rust:    use crate::payments::{process_payment, ...};
 }
 
 // ── GrepMatch ────────────────────────────────────────────────────────────────
@@ -356,8 +372,8 @@ export interface TracerResult {
 // performance limits, and behavior flags.
 
 export interface TracerConfig {
-  // Language scoping — v1 only supports TS/JS.
-  // Other languages have fundamentally different module systems.
+  // Language scoping — supports TS/JS, Python, Java, Go, and Rust.
+  // Each language has its own LanguageStrategy in src/tracer/languages/.
   tracerLanguages:  Language[];   // default: ['typescript', 'javascript']
 
   // Performance limits — prevents runaway scans on massive repos

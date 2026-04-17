@@ -99,21 +99,45 @@ export const TerminalReporter: Reporter = {
         console.log(chalk.bgYellow.black.bold(' [ADVISORY MODE] '));
         console.log(chalk.yellow('Breaking changes found, but pipeline is set to advisory mode (exit 0).'));
       } else {
-        // Strict mode — blocks push.
+        // Strict mode — blocks push / merge.
         console.log(chalk.bgRed.white.bold(' [STRICT MODE] '));
         console.log(chalk.red('Breaking changes found. Exiting with code 1.'));
         console.log();
-        console.log(
-          chalk.white.bold('  ► To bypass this strict check, append ') +
-          chalk.cyan.bold('--no-verify') +
-          chalk.white.bold(' to your git command.')
-        );
-        console.log(
-          chalk.dim('    (e.g., git push --set-upstream origin HEAD --no-verify)')
-        );
-        console.log(
-          chalk.dim('    Document this change in your CHANGELOG before merging.')
-        );
+
+        if (config.hookContext === 'pre-merge-commit') {
+          // ── Merge context ─────────────────────────────────────────────
+          console.log(
+            chalk.white.bold('  ► To bypass this strict check, append ') +
+            chalk.cyan.bold('--no-verify') +
+            chalk.white.bold(' to your merge command.')
+          );
+          console.log(
+            chalk.dim('    (e.g., git merge --no-verify <branch>)')
+          );
+          console.log();
+          console.log(
+            chalk.white.bold('  ► To undo this blocked merge, run:')
+          );
+          console.log(
+            chalk.cyan.bold('      git merge --abort')
+          );
+          console.log(
+            chalk.dim('    Document this change in your CHANGELOG before merging.')
+          );
+        } else {
+          // ── Push context (default) ────────────────────────────────────
+          console.log(
+            chalk.white.bold('  ► To bypass this strict check, append ') +
+            chalk.cyan.bold('--no-verify') +
+            chalk.white.bold(' to your git command.')
+          );
+          console.log(
+            chalk.dim('    (e.g., git push --set-upstream origin HEAD --no-verify)')
+          );
+          console.log(
+            chalk.dim('    Document this change in your CHANGELOG before merging.')
+          );
+        }
       }
     } else if (warnings.length > 0) {
       // Warnings only, not failing

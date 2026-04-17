@@ -14,12 +14,8 @@
  *      node_modules for free, and reads committed content (not working tree).
  *
  *   2. IMPORT DETECTION: For each grep match, read the file content and run
- *      regex-based import pattern detection. This classifies each hit as:
- *        - Static import:   import { fn } from './mod'
- *        - Dynamic import:  const { fn } = await import('./mod')
- *        - CJS require:     const { fn } = require('./mod')
- *        - Wildcard import: import * as mod from './mod'
- *        - Barrel re-export: export { fn } from './mod' or export * from './mod'
+ *      language-specific import pattern detection via LanguageStrategy.
+ *      Each language provides its own import regex set through the strategy.
  *
  *   3. BARREL WALKER: If a file just re-exports the symbol (barrel file),
  *      we add it to a BFS queue and scan its consumers recursively.
@@ -28,17 +24,25 @@
  *   4. OUTPUT: Returns ImportReference[] — the precise set of files that
  *      the Call-Site Tracer (Phase 3) needs to AST-parse.
  *
+ * Multi-language support:
+ *   The scanner itself is language-agnostic. All language-specific behavior
+ *   (import regex patterns, barrel detection, alias extraction) is delegated
+ *   to LanguageStrategy implementations in ./languages/.
+ *
  * Performance characteristics:
  *   - git grep on a 50,000-file repo takes ~50ms
  *   - Import regex on 15 matched files takes ~2ms
  *   - Total Phase 2 time: < 100ms for most repos
  *
  * Edge cases handled:
- *   - Aliased imports (import { fn as alias })
+ *   - Aliased imports (via strategy.extractAlias)
  *   - Barrel file cycles (A re-exports from B, B re-exports from A)
  *   - Wildcard re-exports (export * from './mod')
  *   - Dynamic imports (await import('./mod'))
  *   - CJS requires (require('./mod'))
+ *   - Rust multi-line use groups (AST-verified, not regex-matched)
+ *   - Java static imports (bare identifier mode)
+ *   - Python module imports (object.attribute verification)
  *   - Performance limits (maxGrepResults, maxBarrelDepth)
  *   - Files in excluded paths (node_modules, dist, vendor)
  *   - Non-fatal error isolation (one bad file doesn't crash the scan)
@@ -54,147 +58,17 @@ import {
   TracerConfig,
 } from '../core/types';
 import { isTargetFile } from '../core/utils';
+import {
+  getStrategyForFile,
+  getGrepGlobs,
+  type LanguageStrategy,
+  type ImportPattern,
+} from './languages';
 
 const execAsync = promisify(exec);
 
 // 10MB limit — matches git-diff.ts
 const MAX_BUFFER = 10 * 1024 * 1024;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Extension globs for git grep — v1 scopes to TS/JS only
-// ─────────────────────────────────────────────────────────────────────────────
-
-const TS_JS_GLOBS = ['*.ts', '*.tsx', '*.js', '*.jsx'];
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Import detection regex patterns
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Matches ES static imports:
- *   import { processPayment } from './payments'
- *   import { processPayment as pay } from './payments'
- *   import { processPayment, other } from './payments'
- *
- * Captures:
- *   Group 1: the full import specifiers block (e.g., "processPayment as pay, other")
- */
-function buildStaticImportRegex(symbolName: string): RegExp {
-  // Match the symbol name as a word boundary within an import block
-  return new RegExp(
-    `import\\s*\\{([^}]*\\b${escapeRegex(symbolName)}\\b[^}]*)\\}\\s*from\\s*['\"]([^'"]+)['\"]`,
-    'gm'
-  );
-}
-
-/**
- * Matches dynamic imports:
- *   const { processPayment } = await import('./payments')
- *   const { processPayment: pay } = await import('./payments')
- *
- * Also matches without await:
- *   import('./payments').then(({ processPayment }) => ...)
- */
-function buildDynamicImportRegex(symbolName: string): RegExp {
-  return new RegExp(
-    `(?:import\\s*\\(\\s*['\"]([^'"]+)['\"]\\s*\\))`,
-    'gm'
-  );
-}
-
-/**
- * Matches CJS require:
- *   const { processPayment } = require('./payments')
- *   const mod = require('./payments')
- */
-function buildRequireRegex(symbolName: string): RegExp {
-  return new RegExp(
-    `require\\s*\\(\\s*['\"]([^'"]+)['\"]\\s*\\)`,
-    'gm'
-  );
-}
-
-/**
- * Matches wildcard imports:
- *   import * as payments from './payments'
- *
- * Captures:
- *   Group 1: the namespace alias (e.g., "payments")
- *   Group 2: the module path
- */
-function buildWildcardImportRegex(): RegExp {
-  return new RegExp(
-    `import\\s*\\*\\s*as\\s+(\\w+)\\s*from\\s*['\"]([^'"]+)['\"]`,
-    'gm'
-  );
-}
-
-/**
- * Matches named re-exports (barrel files):
- *   export { processPayment } from './payments'
- *   export { processPayment as default } from './payments'
- */
-function buildNamedReExportRegex(symbolName: string): RegExp {
-  return new RegExp(
-    `export\\s*\\{([^}]*\\b${escapeRegex(symbolName)}\\b[^}]*)\\}\\s*from\\s*['\"]([^'"]+)['\"]`,
-    'gm'
-  );
-}
-
-/**
- * Matches wildcard re-exports (barrel files):
- *   export * from './payments'
- *   export * as payments from './payments'
- */
-function buildWildcardReExportRegex(): RegExp {
-  return new RegExp(
-    `export\\s*\\*\\s*(?:as\\s+\\w+\\s*)?from\\s*['\"]([^'"]+)['\"]`,
-    'gm'
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Utility
-// ─────────────────────────────────────────────────────────────────────────────
-
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * Extracts the local alias from an import specifier block.
- *
- * Given specifiers = "processPayment as pay, otherFn"
- * and symbolName = "processPayment"
- * Returns "pay"
- *
- * Given specifiers = "processPayment, otherFn"
- * and symbolName = "processPayment"
- * Returns "processPayment" (no alias)
- */
-function extractAlias(specifiers: string, symbolName: string): string {
-  // Normalize whitespace
-  const normalized = specifiers.replace(/\s+/g, ' ').trim();
-  const parts = normalized.split(',').map(p => p.trim());
-
-  for (const part of parts) {
-    // Match "symbolName as alias"
-    const aliasMatch = part.match(
-      new RegExp(`^${escapeRegex(symbolName)}\\s+as\\s+(\\w+)$`)
-    );
-    if (aliasMatch) {
-      return aliasMatch[1];
-    }
-
-    // Match bare "symbolName"
-    if (part === symbolName) {
-      return symbolName;
-    }
-  }
-
-  // Fallback — shouldn't happen if regex matched correctly
-  return symbolName;
-}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // MAIN SCANNER CLASS
@@ -271,15 +145,14 @@ export class JITScanner {
    * Uses the git index — reads committed content, not the working tree.
    * Respects .gitignore and excludes binary files automatically.
    *
+   * Multi-language: uses combined globs from all active language strategies.
+   *
    * Returns GrepMatch[] capped at maxGrepResults.
    */
   private async gitGrep(symbolName: string): Promise<GrepMatch[]> {
-    // Build git grep command:
-    //   -n  = show line numbers
-    //   -l  would only show filenames (we want lines for debugging)
-    //   --  = path spec separator
-    //   '*.ts' etc = only search supported extensions
-    const pathSpecs = TS_JS_GLOBS.map(g => `'${g}'`).join(' ');
+    // Build glob list from active tracer languages
+    const globs = getGrepGlobs(this.config.tracerLanguages);
+    const pathSpecs = globs.map(g => `'${g}'`).join(' ');
 
     // Escape the symbol name for shell safety
     const escapedSymbol = symbolName.replace(/'/g, "'\\''");
@@ -336,8 +209,8 @@ export class JITScanner {
         // Check if this looks like a path or a ref
         const potentialRef = refMatch[0].slice(0, -1);
         if (potentialRef === this.config.headSha ||
-            potentialRef === 'HEAD' ||
-            /^[a-f0-9]{7,40}$/.test(potentialRef)) {
+          potentialRef === 'HEAD' ||
+          /^[a-f0-9]{7,40}$/.test(potentialRef)) {
           rest = rest.slice(refMatch[0].length);
         }
       }
@@ -376,6 +249,8 @@ export class JITScanner {
 
   /**
    * Reads a file and classifies how it references the target symbol.
+   * Delegates all regex pattern matching to the file's LanguageStrategy.
+   *
    * Adds direct importers to the `importers` array.
    * Adds barrel re-exporters to the `barrelQueue` for BFS traversal.
    */
@@ -386,6 +261,13 @@ export class JITScanner {
     barrelQueue: Array<{ filePath: string; depth: number }>,
     depth: number,
   ): Promise<void> {
+    // ── Resolve the language strategy for this file ──────────────────────
+    const strategy = getStrategyForFile(filePath);
+    if (!strategy) {
+      // Unsupported file type — skip silently
+      return;
+    }
+
     let content: string;
 
     try {
@@ -398,121 +280,50 @@ export class JITScanner {
     if (!content || content.trim() === '') return;
 
     // ── Check for barrel re-exports first (they take priority) ───────────
-    const isBarrel = this.detectBarrelReExport(content, symbolName, filePath, barrelQueue, depth);
+    const barrelPatterns = strategy.buildBarrelPatterns(symbolName);
+    for (const pattern of barrelPatterns) {
+      let match: RegExpExecArray | null;
+      // Reset regex lastIndex for reuse
+      pattern.regex.lastIndex = 0;
 
-    // ── Check for static imports ─────────────────────────────────────────
-    const staticRegex = buildStaticImportRegex(symbolName);
-    let match: RegExpExecArray | null;
-
-    while ((match = staticRegex.exec(content)) !== null) {
-      const specifiers = match[1];
-      const localName = extractAlias(specifiers, symbolName);
-
-      // Find the line number of this import
-      const lineNum = this.getLineNumber(content, match.index);
-
-      importers.push({
-        filePath,
-        importedName: symbolName,
-        localName,
-        isBarrel: false,
-        importLine: lineNum,
-        importType: 'static',
-      });
+      while ((match = pattern.regex.exec(content)) !== null) {
+        barrelQueue.push({ filePath, depth: depth + 1 });
+        break; // One barrel match is enough
+      }
     }
 
-    // ── Check for dynamic imports ────────────────────────────────────────
-    // Dynamic imports are trickier — the symbol may be destructured later
-    // We detect the import() call and mark it for AST analysis in Phase 3
-    const dynamicRegex = buildDynamicImportRegex(symbolName);
-    while ((match = dynamicRegex.exec(content)) !== null) {
-      // Only add if the file also mentions the symbol name (which it does — grep found it)
-      const lineNum = this.getLineNumber(content, match.index);
+    // ── Check all import patterns ────────────────────────────────────────
+    const importPatterns = strategy.buildImportPatterns(symbolName);
 
-      importers.push({
-        filePath,
-        importedName: symbolName,
-        localName: symbolName, // Phase 3 will resolve the actual binding
-        isBarrel: false,
-        importLine: lineNum,
-        importType: 'dynamic',
-      });
-    }
+    for (const pattern of importPatterns) {
+      let match: RegExpExecArray | null;
+      // Reset regex lastIndex for reuse
+      pattern.regex.lastIndex = 0;
 
-    // ── Check for CJS requires ───────────────────────────────────────────
-    const requireRegex = buildRequireRegex(symbolName);
-    while ((match = requireRegex.exec(content)) !== null) {
-      const lineNum = this.getLineNumber(content, match.index);
+      while ((match = pattern.regex.exec(content)) !== null) {
+        const localName = pattern.extractAlias(match, symbolName);
 
-      importers.push({
-        filePath,
-        importedName: symbolName,
-        localName: symbolName, // Phase 3 resolves destructured binding
-        isBarrel: false,
-        importLine: lineNum,
-        importType: 'require',
-      });
-    }
+        // Optional secondary verification — reject false positives
+        if (pattern.verifyMatch && !pattern.verifyMatch(match, content, symbolName, localName)) {
+          continue;
+        }
 
-    // ── Check for wildcard imports ───────────────────────────────────────
-    const wildcardRegex = buildWildcardImportRegex();
-    while ((match = wildcardRegex.exec(content)) !== null) {
-      const namespaceName = match[1]; // e.g., 'payments'
-      const lineNum = this.getLineNumber(content, match.index);
+        const lineNum = this.getLineNumber(content, match.index);
 
-      importers.push({
-        filePath,
-        importedName: symbolName,
-        localName: `${namespaceName}.${symbolName}`, // e.g., 'payments.processPayment'
-        isBarrel: false,
-        importLine: lineNum,
-        importType: 'wildcard',
-      });
+        importers.push({
+          filePath,
+          importedName: symbolName,
+          localName,
+          isBarrel: false,
+          importLine: lineNum,
+          importType: pattern.type,
+        });
+      }
     }
 
     // Deduplicate importers for this file — a file may have multiple grep hits
     // but only one actual import statement
     this.deduplicateImporters(importers, filePath);
-  }
-
-  /**
-   * Detects barrel file re-exports and adds them to the BFS queue.
-   * Returns true if a barrel re-export was found.
-   *
-   * Handles:
-   *   export { processPayment } from './payments'
-   *   export * from './payments'
-   */
-  private detectBarrelReExport(
-    content: string,
-    symbolName: string,
-    filePath: string,
-    barrelQueue: Array<{ filePath: string; depth: number }>,
-    depth: number,
-  ): boolean {
-    let found = false;
-
-    // Named re-exports: export { processPayment } from './payments'
-    const namedRegex = buildNamedReExportRegex(symbolName);
-    let match: RegExpExecArray | null;
-
-    while ((match = namedRegex.exec(content)) !== null) {
-      found = true;
-      // This file is a barrel — add to BFS queue so we scan its consumers next
-      barrelQueue.push({ filePath, depth: depth + 1 });
-    }
-
-    // Wildcard re-exports: export * from './payments'
-    // These are trickier — we can't know if the wildcard includes our symbol
-    // without resolving the source module. We conservatively treat them as barrels.
-    const wildcardRegex = buildWildcardReExportRegex();
-    while ((match = wildcardRegex.exec(content)) !== null) {
-      // Only add if the file contains the symbol name somewhere (which it does — grep found it)
-      found = true;
-      barrelQueue.push({ filePath, depth: depth + 1 });
-    }
-
-    return found;
   }
 
   // ── 4. Barrel BFS walker ───────────────────────────────────────────────────
@@ -552,8 +363,6 @@ export class JITScanner {
       barrelsProcessed++;
 
       // ── Find consumers of this barrel file ─────────────────────────────
-      // The barrel's filename (without extension) or directory name is what
-      // consumers import from. We search for both patterns.
       const barrelConsumers = await this.findBarrelConsumers(filePath, symbolName);
 
       for (const consumer of barrelConsumers) {
@@ -572,7 +381,7 @@ export class JITScanner {
           symbolName,
           importers,
           barrelQueue,
-          depth, // pass current depth; detectBarrelReExport adds +1
+          depth, // pass current depth; barrel patterns add +1
         );
       }
     }
@@ -587,41 +396,23 @@ export class JITScanner {
   /**
    * Finds files that import from a barrel file.
    *
-   * If barrel is `src/checkout/index.ts`, consumers might import:
-   *   - from './checkout'
-   *   - from './checkout/index'
-   *   - from '../checkout'
-   *   - from '@/checkout'
-   *
-   * We search for the directory name or the file basename (without extension)
-   * because import paths vary based on tsconfig paths, relative depth, etc.
+   * Uses the barrel file's LanguageStrategy to determine the search term
+   * (e.g., 'checkout' from 'src/checkout/index.ts').
    */
   private async findBarrelConsumers(
     barrelPath: string,
     symbolName: string,
   ): Promise<GrepMatch[]> {
-    // Extract the meaningful import target from the barrel path
-    // e.g., 'src/checkout/index.ts' → 'checkout'
-    // e.g., 'src/payments/processor.ts' → 'processor' OR 'payments/processor'
-    const baseName = barrelPath.replace(/\.(ts|tsx|js|jsx)$/, '');
-    const isIndex = baseName.endsWith('/index') || baseName.endsWith('\\index');
+    const strategy = getStrategyForFile(barrelPath);
+    if (!strategy) return [];
 
-    // The part consumers actually type in their import path
-    let importTarget: string;
-    if (isIndex) {
-      // index files: consumers import the directory name
-      importTarget = baseName.replace(/\/index$|\\index$/, '').split(/[\\/]/).pop() || '';
-    } else {
-      // non-index files: consumers import the filename
-      importTarget = baseName.split(/[\\/]/).pop() || '';
-    }
-
+    const importTarget = strategy.buildBarrelSearchTerm(barrelPath);
     if (!importTarget) return [];
 
     // Grep for files that both mention the import target AND the symbol name
-    // This two-term search dramatically reduces false positives
     try {
-      const pathSpecs = TS_JS_GLOBS.map(g => `'${g}'`).join(' ');
+      const globs = getGrepGlobs(this.config.tracerLanguages);
+      const pathSpecs = globs.map(g => `'${g}'`).join(' ');
       const escapedTarget = importTarget.replace(/'/g, "'\\''");
       const escapedSymbol = symbolName.replace(/'/g, "'\\''");
 
@@ -660,8 +451,8 @@ export class JITScanner {
     } catch (error: any) {
       const stderr: string = error.stderr ?? '';
       if (stderr.includes('does not exist in') ||
-          stderr.includes('Path') ||
-          error.code === 128) {
+        stderr.includes('Path') ||
+        error.code === 128) {
         return '';
       }
       throw error;
@@ -723,9 +514,9 @@ export function createDefaultTracerConfig(
 ): TracerConfig {
   return {
     tracerLanguages: ['typescript', 'javascript'],
-    maxGrepResults:   500,
-    maxBarrelDepth:   10,
-    maxTracerFiles:   100,
+    maxGrepResults: 500,
+    maxBarrelDepth: 10,
+    maxTracerFiles: 100,
     traceOnlyBreaking: true,
     repoRoot,
     headSha,

@@ -1,4 +1,36 @@
 #!/bin/sh
 
-echo " Diff-Guardian: Running post-merge API contract check..."
-npx dg
+# ── Diff-Guardian Post-Merge Hook ───────────────────────────────────────────
+# Advisory fallback for fast-forward merges where pre-merge-commit doesn't fire.
+# On non-FF merges, pre-merge-commit already handled it — skip to avoid
+# duplicate reports.
+#
+# This hook CANNOT block — the merge is already complete.
+# To undo a fast-forward merge: git reset --hard ORIG_HEAD
+
+# ── Skip on non-fast-forward merges ─────────────────────────────────────────
+# Non-FF merge commits have 2+ parents. If we detect multiple parents,
+# pre-merge-commit already ran — no need to report again.
+PARENTS=$(git log -1 --format='%P' HEAD | wc -w | tr -d ' ')
+if [ "$PARENTS" -gt 1 ]; then
+  exit 0
+fi
+
+# ── Fast-forward merge — pre-merge-commit did NOT fire ──────────────────────
+NODE_MAJOR=$(node -e "process.stdout.write(process.versions.node.split('.')[0])" 2>/dev/null)
+if [ -z "$NODE_MAJOR" ] || [ "$NODE_MAJOR" -lt 18 ]; then
+  exit 0
+fi
+
+echo " Diff-Guardian: Fast-forward merge detected — running advisory analysis..."
+NODE_OPTIONS="--max-old-space-size=512" DG_HOOK=post-merge npx dg --report-file .dg-report.json || true
+
+echo ""
+echo " ⚠️  This was a fast-forward merge. If breaking changes were detected"
+echo "    and you want to undo this merge, run:"
+echo ""
+echo "      git reset --hard ORIG_HEAD"
+echo ""
+
+# Always exit 0 — merge already happened, cannot block
+exit 0

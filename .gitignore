@@ -18,6 +18,7 @@ yarn-error.log*
 
 diff-guardian-v2.pdf
 .antigravity
+.dg-report.json
 
 # Tree-sitter WASM grammars
 /grammars/*.wasm

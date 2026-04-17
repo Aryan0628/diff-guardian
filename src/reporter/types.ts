@@ -8,6 +8,8 @@ export interface ReporterConfig {
   repoSlug?: string;
   failOnWarnings?: boolean; // Added per config
   quiet?: boolean;
+  reportFile?: string;      // If set, write JSON AnalysisResult to this path
+  hookContext?: 'pre-push' | 'pre-merge-commit' | 'post-merge';  // Set via DG_HOOK env var
 }
 
 export interface Reporter {

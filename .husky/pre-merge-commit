@@ -1,0 +1,28 @@
+#!/bin/sh
+
+# ── Diff-Guardian Pre-Merge-Commit Hook ─────────────────────────────────────
+# Blocks merge commit creation if breaking API changes are detected.
+# Compares the current branch (HEAD) against the incoming branch (MERGE_HEAD).
+#
+# Bypass:  git merge --no-verify <branch>
+# Undo:    git merge --abort
+
+# Node version guard — requires Node 18+
+NODE_MAJOR=$(node -e "process.stdout.write(process.versions.node.split('.')[0])" 2>/dev/null)
+if [ -z "$NODE_MAJOR" ] || [ "$NODE_MAJOR" -lt 18 ]; then
+  echo " [diff-guardian] Skipping: requires Node.js 18 or higher (found: ${NODE_MAJOR:-none})."
+  exit 0
+fi
+
+# Read the SHA of the branch being merged in
+MERGE_HEAD=$(cat .git/MERGE_HEAD 2>/dev/null)
+if [ -z "$MERGE_HEAD" ]; then
+  # No MERGE_HEAD — not a merge operation, skip
+  exit 0
+fi
+
+echo " Diff-Guardian: Running pre-merge API contract gatekeeper..."
+echo " Comparing HEAD against incoming branch (${MERGE_HEAD})..."
+
+# 512 MB heap — sufficient for repos up to ~5,000 files.
+NODE_OPTIONS="--max-old-space-size=512" DG_HOOK=pre-merge-commit npx dg compare HEAD "$MERGE_HEAD"
