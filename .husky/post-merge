@@ -23,7 +23,7 @@ if [ -z "$NODE_MAJOR" ] || [ "$NODE_MAJOR" -lt 18 ]; then
 fi
 
 echo " Diff-Guardian: Fast-forward merge detected — running advisory analysis..."
-NODE_OPTIONS="--max-old-space-size=512" DG_HOOK=post-merge npx dg --report-file .dg-report.json || true
+NODE_OPTIONS="--max-old-space-size=512" DG_HOOK=post-merge npx dg compare ORIG_HEAD HEAD --report-file .dg-report.json || true
 
 echo ""
 echo " ⚠️  This was a fast-forward merge. If breaking changes were detected"

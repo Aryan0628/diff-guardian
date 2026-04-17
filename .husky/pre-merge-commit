@@ -15,7 +15,8 @@ if [ -z "$NODE_MAJOR" ] || [ "$NODE_MAJOR" -lt 18 ]; then
 fi
 
 # Read the SHA of the branch being merged in
-MERGE_HEAD=$(cat .git/MERGE_HEAD 2>/dev/null)
+# Uses git rev-parse instead of cat .git/MERGE_HEAD to support worktrees and submodules
+MERGE_HEAD=$(git rev-parse MERGE_HEAD 2>/dev/null)
 if [ -z "$MERGE_HEAD" ]; then
   # No MERGE_HEAD — not a merge operation, skip
   exit 0

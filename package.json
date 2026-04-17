@@ -3,6 +3,16 @@
   "version": "1.0.0",
   "description": "Impact-aware git diff CLI using WASM tree-sitter AST to map API blast radius.",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/",
+    "grammars/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "bin": {
     "diff-guardian": "./dist/cli.js",
     "dg": "./dist/cli.js"

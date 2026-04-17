@@ -148,6 +148,9 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      - name: Build WASM Grammars
+        run: npm run build:grammars
+
       - name: Build
         run: npm run build
 
@@ -385,11 +388,13 @@ async function runSmartDefault(
 
       await runPipeline({ baseSha, headSha, repoRoot, config: reporterConfig });
 
-      // Always exit 0 to not block PR artificially (advisory only)
+      // Always exit 0 — classification results are advisory, never block the PR.
       return 0;
     } catch (e: any) {
+      // Infrastructure failure (missing grammars, OOM, etc.) — NOT a clean advisory pass.
+      // Exit 2 so the CI check turns red and the team knows something is broken.
       console.error(`Pipeline Error: ${e.message}`);
-      return 0;
+      return 2;
     }
   } else {
     // ── Local Mode ─────────────────────────────────────────────────────

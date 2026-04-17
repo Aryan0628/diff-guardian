@@ -508,17 +508,22 @@ function extractParams(paramsNode: SyntaxNode): Param[] {
 
     switch (child.type) {
 
-      // ── Required parameter: x: string ──────────────────────────────────────
+      // ── Required parameter: x: string  |  x: number = 3 ──────────────────────
+      // NOTE: tree-sitter classifies `x: Type = value` as required_parameter
+      // (not optional_parameter) when there's no `?`. The `value` field holds
+      // the default assignment if present.
       case 'required_parameter': {
-        const nameNode = child.childForFieldName('pattern');
-        const typeNode = child.childForFieldName('type');
+        const nameNode  = child.childForFieldName('pattern');
+        const typeNode  = child.childForFieldName('type');
+        const valueNode = child.childForFieldName('value');
         const isRest = nameNode?.type === 'rest_pattern' || (nameNode?.text || '').startsWith('...');
         
         params.push({
-          name:       isRest && nameNode ? '...' + sanitizeName(nameNode).replace(/^\.\.\./, '') : sanitizeName(nameNode),
-          type:       extractType(typeNode),
-          optional:   false,
-          hasDefault: false,
+          name:         isRest && nameNode ? '...' + sanitizeName(nameNode).replace(/^\.\.\./, '') : sanitizeName(nameNode),
+          type:         extractType(typeNode),
+          optional:     valueNode !== null,  // has default → effectively optional
+          hasDefault:   valueNode !== null,
+          defaultValue: valueNode?.text,
           isRest,
         });
         break;
