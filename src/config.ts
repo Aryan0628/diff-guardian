@@ -2,12 +2,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 export interface DgConfig {
+  /** Required: schema version for config compatibility */
+  version: number;
   baseBranch?: string;
   failOnWarnings?: boolean;
 
   // ── Tracer settings ─────────────────────────────────────────────────────
-  /** Enable/disable call-site tracing (default: true) */
-  enableTracer?: boolean;
   /** Max files returned by git grep per symbol (default: 500) */
   maxGrepResults?: number;
   /** Max recursive barrel file depth (default: 10) */
@@ -28,7 +28,7 @@ export function loadConfig(repoRoot: string = process.cwd()): DgConfig {
       console.warn(`[dg] Failed to parse ${CONFIG_FILE}: ${(e as Error).message}`);
     }
   }
-  return {};
+  return { version: 1 };
 }
 
 export function saveConfig(config: DgConfig, repoRoot: string = process.cwd()): void {
