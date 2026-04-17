@@ -11,12 +11,14 @@ if [ -z "$NODE_MAJOR" ] || [ "$NODE_MAJOR" -lt 18 ]; then
   exit 0
 fi
 
-# ── VS Code detection ───────────────────────────────────────────────────────
-# VS Code's Git extension injects VSCODE_GIT_ASKPASS_MAIN into all spawned
-# git processes. When present, we know the push originated from VS Code's
-# Source Control UI (Sync Changes button), not a terminal.
-if [ -n "$VSCODE_GIT_ASKPASS_MAIN" ]; then
-  echo " Diff-Guardian: VS Code detected — running advisory analysis..."
+# ── VS Code Source Control UI detection ──────────────────────────────────────
+# VSCODE_GIT_ASKPASS_MAIN is set in BOTH VS Code's integrated terminal
+# AND the Source Control UI. To distinguish them, we also check if stdout
+# is a TTY:
+#   - Integrated terminal:  VSCODE env set + stdout IS a TTY  → strict
+#   - Source Control UI:    VSCODE env set + stdout NOT a TTY  → advisory
+if [ -n "$VSCODE_GIT_ASKPASS_MAIN" ] && [ ! -t 1 ]; then
+  echo " Diff-Guardian: VS Code Source Control detected — running advisory analysis..."
   NODE_OPTIONS="--max-old-space-size=512" DG_HOOK=pre-push npx dg --report-file .dg-report.json || true
   exit 0
 fi
