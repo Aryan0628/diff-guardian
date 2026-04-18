@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/npm/v/diff-guardian?style=flat-square&color=blue" alt="npm version" />
-  <img src="https://img.shields.io/npm/l/diff-guardian?style=flat-square" alt="license" />
+  <img src="https://img.shields.io/github/license/Aryan0628/diff-guardian?style=flat-square" alt="license" />
   <img src="https://img.shields.io/node/v/diff-guardian?style=flat-square" alt="node version" />
   <img src="https://img.shields.io/github/actions/workflow/status/Aryan0628/diff-guardian/diff-guardian.yml?branch=main&style=flat-square&label=CI" alt="CI status" />
 </p>
