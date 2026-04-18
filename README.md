@@ -367,17 +367,17 @@ import type {
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                           CLI Layer                              │
-│  npx dg check | compare | trace | rules | init                  │
+│         npx dg check | compare | trace | rules | init            │
 ├──────────────────────────────────────────────────────────────────┤
 │                         Pipeline                                 │
-│  Orchestrates the full analysis flow                             │
+│           Orchestrates the full analysis flow                    │
 ├──────────────┬──────────────┬──────────────┬─────────────────────┤
 │  Git Diff    │  AST Mapper  │  Classifier  │  Reporter           │
 │  Parser      │  (WASM TS)   │  Engine      │  (Terminal/GitHub)  │
 ├──────────────┴──────────────┼──────────────┴─────────────────────┤
-│     Language Translators    │    Tracer (Scanner + Call Sites)    │
-│  TS · JS · Python · Go     │    JIT import resolution            │
-│  Java · Rust                │    Lazy blast-radius graph          │
+│     Language Translators    │    Tracer (Scanner + Call Sites)   │
+│     TS · JS · Python · Go   │    JIT import resolution           │
+│     Java · Rust             │    Lazy blast-radius graph         │
 └─────────────────────────────┴────────────────────────────────────┘
 ```
 
