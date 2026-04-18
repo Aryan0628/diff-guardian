@@ -406,7 +406,7 @@ When requesting a feature, include:
 
 - Open a [Discussion](https://github.com/Aryan0628/diff-guardian/discussions) for general questions
 - Open an [Issue](https://github.com/Aryan0628/diff-guardian/issues) for bugs and feature requests
-- Check the [Documentation](https://diff-guardian.dev/docs) for guides and references
+- Check the [Documentation](https://diffguardian.space/docs) for guides and references
 
 ---
 

@@ -181,7 +181,7 @@ npx dg rules
 
 Prints all 26 classification rules with their IDs, names, targets, and descriptions.
 
-> For detailed examples and remediation guidance, see the [full rules documentation](https://diff-guardian.dev/docs/rules/all).
+> For detailed examples and remediation guidance, see the [full rules documentation](https://diffguardian.space/docs/rules/all).
 
 ### `dg init` — Project Scaffolding
 
