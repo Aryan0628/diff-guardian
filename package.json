@@ -1,6 +1,6 @@
 {
   "name": "diff-guardian",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Impact-aware git diff CLI using WASM tree-sitter AST to map API blast radius.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
