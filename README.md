@@ -25,9 +25,14 @@
 
 ## Why Diff Guardian?
 
+### The Problem: Silent API Breakages
+Standard `git diff` makes merging code dangerous because it only understands added or removed text lines, not your code's actual structure. When teams collaborate on shared interfaces, standard `git` won't warn you if a colleague accidentally removes a required argument, changes a return type, or mutates an exported enum. 
+The result? Silent regressions, broken CI/CD pipelines, and painful merge resolutions that easily slip past code review.
+
+### The Solution
 Traditional diffs show **what changed**. Diff Guardian shows **what breaks**.
 
-It parses your code into AST signatures using WASM-compiled Tree-Sitter grammars, compares the before and after states, and classifies every change against **26 production rules** — from removed parameters to narrowed generics to enum value mutations. It then traces every call site in your codebase to show **exactly who is affected**.
+Diff Guardian acts as an automated safety net. Using WASM-compiled Tree-Sitter grammars, it parses your code into abstract syntax tree (AST) signatures, compares the before and after states across any branch, and evaluates every diff against **26 strict production rules**. It then traces every call site across your ecosystem to show **exactly who is affected** before you merge or push.
 
 ```
 $ npx dg compare main feature-branch
