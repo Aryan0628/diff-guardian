@@ -15,7 +15,7 @@
 
 <p align="center">
   <a href="https://diff-guardian.dev/docs">Documentation</a> &middot;
-  <a href="https://diff-guardian.dev/docs/rules">Rules Reference</a> &middot;
+  <a href="https://diff-guardian.dev/docs/rules/all">Rules Reference</a> &middot;
   <a href="#quick-start">Quick Start</a> &middot;
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
@@ -180,6 +180,8 @@ npx dg rules
 
 Prints all 26 classification rules with their IDs, names, targets, and descriptions.
 
+> For detailed examples and remediation guidance, see the [full rules documentation](https://diff-guardian.dev/docs/rules/all).
+
 ### `dg init` — Project Scaffolding
 
 ```bash
@@ -224,50 +226,6 @@ Diff Guardian looks for a `dg.config.json` file in your project root.
 
 ---
 
-## Classification Rules
-
-Diff Guardian ships with **26 rules** organized into breaking changes and warnings.
-
-### Breaking Changes
-
-| Rule | Name | Description |
-|---|---|---|
-| R01 | Parameter Removed | A parameter was removed from a function signature |
-| R02 | Parameter Reordered | Parameters were reordered in a function signature |
-| R03 | Required Parameter Added | A required parameter was added to a function signature |
-| R04 | Parameter Type Narrowed | A parameter's accepted type was narrowed |
-| R06 | Return Made Nullable | A function's return type became nullable |
-| R07 | Return Type Narrowed | A function's return type was narrowed |
-| R08 | Symbol Unexported | A previously exported symbol was unexported |
-| R11 | Sync to Async | A synchronous function became async |
-| R13 | Generic Constraint Narrowed | A generic type parameter was narrowed |
-| R15 | Overload Removed | A function overload was removed |
-| R17 | Static Modifier Changed | A method's static modifier changed |
-| R18 | Param Mutability Narrowed | A parameter's mutability was narrowed |
-| R20 | Visibility Narrowed | A symbol's visibility was reduced |
-| R21 | Async to Sync | An async function became synchronous |
-| R22 | Return Type Never | A function's return type became `never` |
-| R24 | Constructor Changed | A class constructor's signature was modified |
-| R25 | Interface Property Required | An optional interface property became required |
-| R26 | Interface Property Removed | An interface property was removed |
-| R27 | Enum Member Changed | Enum members were removed or values changed |
-
-### Warnings
-
-| Rule | Name | Description |
-|---|---|---|
-| R05 | Optional Parameter Added | An optional parameter was added |
-| R12 | Parameter Type Widened | A parameter's accepted type was widened |
-| R14 | Rest Parameter Changed | A rest parameter was added or modified |
-| R16 | Overload Added | A new function overload was added |
-| R19 | Param Mutability Widened | A parameter's mutability was widened |
-| R23 | Default Value Changed | A parameter's default value was changed |
-| R28 | Symbol Exported | A new symbol was exported |
-
-> For detailed examples and remediation guidance, see the [full rules documentation](https://diff-guardian.dev/docs/rules).
-
----
-
 ## CI/CD Integration
 
 ### GitHub Actions
@@ -280,6 +238,10 @@ name: "Diff Guardian"
 on:
   pull_request:
     branches: [ "main", "master" ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -306,7 +268,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: grammars/
-          key: wasm-grammars-${{ hashFiles('package-lock.json') }}
+          key: wasm-grammars-${{ hashFiles('node_modules/tree-sitter-*/package.json') }}
+          restore-keys: |
+            wasm-grammars-
 
       - name: Build WASM Grammars
         if: steps.grammar-cache.outputs.cache-hit != 'true'
@@ -445,9 +409,8 @@ The docs site covers:
 - Detailed installation guides
 - Rule-by-rule reference with examples
 - Configuration deep dives
-- CI/CD recipes for GitHub, GitLab, and Bitbucket
+- CI/CD recipes for GitHub Actions
 - Architecture and internals
-- Troubleshooting and FAQ
 
 ---
 
@@ -461,4 +424,4 @@ Please review our [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
 
 ## License
 
-[MIT](LICENSE) &copy; Aryan Gupta
+[ISC](LICENSE) &copy; Aryan Gupta

@@ -44,12 +44,11 @@ Please read our [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
 
 ### Prerequisites
 
-| Dependency     | Version                                             |
-| -------------- | --------------------------------------------------- |
-| Node.js        | >= 18                                               |
-| npm            | >= 9                                                |
-| Git            | Latest stable                                       |
-| Emscripten SDK | Only needed if rebuilding WASM grammars from source |
+| Dependency | Version        |
+| ---------- | -------------- |
+| Node.js    | >= 18          |
+| npm        | >= 9           |
+| Git        | Latest stable  |
 
 ### Install Dependencies
 
@@ -59,13 +58,13 @@ npm install
 
 ### Build WASM Grammars
 
-The grammars are pre-built in the `grammars/` directory. If you need to rebuild them:
+The WASM grammar binaries are not checked into git. You must build them locally after cloning:
 
 ```bash
 npm run build:grammars
 ```
 
-This compiles Tree-Sitter grammars for TypeScript, JavaScript, Python, Go, Java, and Rust into WASM binaries.
+This downloads `wasi-sdk` and compiles Tree-Sitter grammars for TypeScript, JavaScript, Python, Go, Java, and Rust into WASM binaries in the `grammars/` directory.
 
 ### Build the Project
 
