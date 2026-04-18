@@ -14,8 +14,9 @@
 </p>
 
 <p align="center">
-  <a href="https://diff-guardian.dev/docs">Documentation</a> &middot;
-  <a href="https://diff-guardian.dev/docs/rules/all">Rules Reference</a> &middot;
+  <a href="https://diffguardian.space">Website</a> &middot;
+  <a href="https://diffguardian.space/docs">Documentation</a> &middot;
+  <a href="https://diffguardian.space/docs/rules/all">Rules Reference</a> &middot;
   <a href="#quick-start">Quick Start</a> &middot;
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
@@ -402,7 +403,7 @@ import type {
 
 ## Documentation
 
-> For full documentation, guides, and examples, visit [diff-guardian.dev/docs](https://diff-guardian.dev/docs).
+> Visit the official website at [diffguardian.space](https://diffguardian.space) for an overview of the project, and [diffguardian.space/docs](https://diffguardian.space/docs) for full documentation, guides, and examples.
 
 The docs site covers:
 
