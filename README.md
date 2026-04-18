@@ -269,7 +269,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: grammars/
-          key: wasm-grammars-${{ hashFiles('node_modules/tree-sitter-*/package.json') }}
+          key: wasm-grammars-${{ hashFiles('package-lock.json') }}
           restore-keys: |
             wasm-grammars-
 
@@ -425,4 +425,4 @@ Please review our [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
 
 ## License
 
-[ISC](LICENSE) &copy; Aryan Gupta
+[MIT](LICENSE) &copy; Aryan Gupta

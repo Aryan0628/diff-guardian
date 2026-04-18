@@ -36,8 +36,8 @@
     "typescript",
     "static-analysis"
   ],
-  "author": "Aryan Gupta (20244042)",
-  "license": "ISC",
+  "author": "Aryan Gupta",
+  "license": "MIT",
   "dependencies": {
     "chalk": "^4.1.2",
     "glob": "^10.3.10",
