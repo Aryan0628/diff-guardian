@@ -36,6 +36,7 @@
     "typescript",
     "static-analysis"
   ],
+  
   "author": "Aryan Gupta",
   "license": "MIT",
   "dependencies": {
