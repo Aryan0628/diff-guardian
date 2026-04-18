@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/banner.png" alt="Diff Guardian" width="600" />
+  <img src="https://raw.githubusercontent.com/Aryan0628/diff-guardian/main/.github/banner.png" alt="Diff Guardian" width="600" />
 </p>
 
 <p align="center">
