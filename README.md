@@ -370,21 +370,21 @@ import type {
 
 ## Architecture
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                           CLI Layer                              │
-│         npx dg check | compare | trace | rules | init            │
-├──────────────────────────────────────────────────────────────────┤
-│                         Pipeline                                 │
-│           Orchestrates the full analysis flow                    │
-├──────────────┬──────────────┬──────────────┬─────────────────────┤
-│  Git Diff    │  AST Mapper  │  Classifier  │  Reporter           │
-│  Parser      │  (WASM TS)   │  Engine      │  (Terminal/GitHub)  │
-├──────────────┴──────────────┼──────────────┴─────────────────────┤
-│     Language Translators    │    Tracer (Scanner + Call Sites)   │
-│     TS · JS · Python · Go   │    JIT import resolution           │
-│     Java · Rust             │    Lazy blast-radius graph         │
-└─────────────────────────────┴────────────────────────────────────┘
+  ```
+                          ┌──────────────────────────────────────────────────────────────────┐
+                          │                           CLI Layer                              │
+                          │         npx dg check | compare | trace | rules | init            │
+                          ├──────────────────────────────────────────────────────────────────┤
+                          │                         Pipeline                                 │
+                          │           Orchestrates the full analysis flow                    │
+                          ├──────────────┬──────────────┬──────────────┬─────────────────────┤
+                          │  Git Diff    │  AST Mapper  │  Classifier  │  Reporter           │
+                          │  Parser      │  (WASM TS)   │  Engine      │  (Terminal/GitHub)  │
+                          ├──────────────┴──────────────┼──────────────┴─────────────────────┤
+                          │     Language Translators    │    Tracer (Scanner + Call Sites)   │
+                          │     TS · JS · Python · Go   │    JIT import resolution           │
+                          │     Java · Rust             │    Lazy blast-radius graph         │
+                          └─────────────────────────────┴────────────────────────────────────┘
 ```
 
 ---
