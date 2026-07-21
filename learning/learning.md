@@ -60,7 +60,7 @@
 ## Phase 3: The Core Engine — Parsing & Classification
 > *The heart of the tool. How source code becomes structured signatures and how signatures get compared.*
 
-- [ ] **Topic 1: Source Extraction (`git-diff.ts`)**
+- [x] **Topic 1: Source Extraction (`git-diff.ts`)** ✅ → [session file](./phase3-topic1-source-extraction.md)
   - `extractGitSources()` — the entry point that produces `FileDiff[]`
   - Parsing `git diff --name-status` output — status codes M/A/D/R
   - Three modes of extraction:
@@ -191,8 +191,8 @@
 |-------|--------|-----------|
 | Phase 1: Foundations | 3 | 3/3 ✅ |
 | Phase 2: Architecture | 2 | 2/2 ✅ |
-| Phase 3: Core Engine | 4 | 0/4 |
+| Phase 3: Core Engine | 4 | 1/4 |
 | Phase 4: JIT Tracer | 2 | 0/2 |
 | Phase 5: CLI & Integration | 1 | 0/1 |
 | Phase 6: Design & Interview | 2 | 0/2 |
-| **Total** | **14** | **5/14** |
+| **Total** | **14** | **6/14** |
