@@ -70,7 +70,7 @@
   - Concurrency with `Promise.allSettled()` — why not `Promise.all()`
   - 10MB buffer limit, error isolation, rename detection
 
-- [ ] **Topic 2: AST Parsing & Signature Extraction (`ast-mapper.ts` + Translators)**
+- [x] **Topic 2: AST Parsing & Signature Extraction (`ast-mapper.ts` + Translators)** ✅ → [session file](./phase3-topic2-ast-parsing-signature-extraction.md)
   - `ASTMapper` lifecycle: `init()` → `buildSignatureCache()`
   - WASM grammar loading — the `languages` Map, deduplication, thundering herd prevention
   - `extractFromSource()`: parse → dispatch to translator → inject filePath
@@ -83,7 +83,7 @@
   - Multi-language translators: Python, Go, Java, Rust — what's shared, what's unique
   - The Signature Map: `Map<string, AnySignature>`, key prefixes (`interface:`, `enum:`, `type:`), why O(1) lookup matters
 
-- [ ] **Topic 3: The Classifier Engine — 26 Rules (`engine.ts` + Rules)**
+- [x] **Topic 3: The Classifier Engine — 26 Rules (`engine.ts` + Rules)** ✅ → [session file](./phase3-topic3-classifier-engine.md)
   - `ClassifierEngine.compare()` — the core algorithm:
     - Key union: `new Set([...old.keys(), ...new.keys()])`
     - Case A (deletion), Case B (addition), Case C (modification)
@@ -98,7 +98,7 @@
     - **Interface, enum & type rules** (R25–R27): property changes, member removal
   - The `FunctionChange` output — `symbolType`, `before`/`after`, `callers`
 
-- [ ] **Topic 4: The Data Contract (`types.ts`, `constants.ts`, `utils.ts`)**
+- [x] **Topic 4: The Data Contract (`types.ts`, `constants.ts`, `utils.ts`)** ✅ → [session file](./phase3-topic4-data-contract.md)
   - The enum foundations: `Language`, `Severity`, `ChangeType`
   - `Param` and `TypeParameter` — representing function arguments
   - Signature types: `FunctionSignature` (15+ fields), `InterfaceSignature`, `EnumSignature`, `TypeAliasSignature`
@@ -112,7 +112,7 @@
 ## Phase 4: The JIT Tracer — Blast Radius Engine
 > *The most technically impressive part. A two-phase JIT engine that traces who calls a broken function and whether they'll actually break.*
 
-- [ ] **Topic 1: JIT Architecture & The Scanner (`scanner.ts`)**
+- [x] **Topic 1: JIT Architecture & The Scanner (`scanner.ts`)**
   - The "Lazy Graph" concept — why not parse the entire codebase?
   - JIT vs AOT analysis — performance: 50ms grep + 20ms trace = <100ms
   - `isTraceable()` — which changes are worth tracing (not all are)
@@ -125,7 +125,7 @@
     - `verifyMatch()` — eliminating false positives
   - Barrel file walking — BFS with cycle detection, depth limits, `findBarrelConsumers()`
 
-- [ ] **Topic 2: Call-Site Tracing & Validation (`tracer.ts`)**
+- [x] **Topic 2: Call-Site Tracing & Validation (`tracer.ts`)**
   - `trace()` entry point — the per-file loop
   - `extractCallSites()` — Tree-Sitter query matching with `@callee`, `@args`, `@call` captures
   - `countArguments()` — spread detection
@@ -147,7 +147,7 @@
 ## Phase 5: CLI, Reporters & CI/CD Integration
 > *How users interact with Diff-Guardian — from the terminal command to GitHub PR comments to git hooks.*
 
-- [ ] **Topic 1: CLI, Configuration & Output**
+- [x] **Topic 1: CLI, Configuration & Output**
   - `cli.ts` — shebang, `minimist` argument parsing, command routing
   - Smart default mode — CI detection via `GITHUB_ACTIONS` env var
   - Commands: `check`, `compare`, `trace`, `rules`, `init`
@@ -166,7 +166,7 @@
 ## Phase 6: System Design & Interview Mastery
 > *How to talk about this project in an interview. Design patterns, trade-offs, and the pitch.*
 
-- [ ] **Topic 1: Design Patterns & Engineering Decisions**
+- [x] **Topic 1: Design Patterns & Engineering Decisions**
   - Strategy Pattern — `LanguageStrategy` for multi-language support
   - Pipeline/Chain Pattern — the 6-phase pipeline
   - Factory Pattern — `createDefaultTracerConfig()`
@@ -174,7 +174,7 @@
   - Lazy Evaluation — JIT tracer (only trace what's broken)
   - Performance decisions: sequential WASM parsing (heap fragmentation), `git grep` vs file scanning, performance caps (`maxGrepResults`, `maxBarrelDepth`, `maxTracerFiles`)
 
-- [ ] **Topic 2: Trade-offs, Scalability & Interview Q&A**
+- [x] **Topic 2: Trade-offs, Scalability & Interview Q&A**
   - Trade-offs made: no incremental caching, sequential tracer, missing languages
   - What you'd improve: IDE integration, parallel tracing, semantic versioning suggestions
   - How it scales — and where it doesn't
@@ -191,8 +191,8 @@
 |-------|--------|-----------|
 | Phase 1: Foundations | 3 | 3/3 ✅ |
 | Phase 2: Architecture | 2 | 2/2 ✅ |
-| Phase 3: Core Engine | 4 | 1/4 |
-| Phase 4: JIT Tracer | 2 | 0/2 |
-| Phase 5: CLI & Integration | 1 | 0/1 |
-| Phase 6: Design & Interview | 2 | 0/2 |
-| **Total** | **14** | **6/14** |
+| Phase 3: Core Engine | 4 | 4/4 ✅ |
+| Phase 4: JIT Tracer | 2 | 2/2 ✅ |
+| Phase 5: CLI & Integration | 1 | 1/1 ✅ |
+| Phase 6: Design & Interview | 2 | 2/2 ✅ |
+| **Total** | **14** | **14/14 🎓** |
